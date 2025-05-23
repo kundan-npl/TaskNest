@@ -1,0 +1,121 @@
+# TaskNest .gitignore
+
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+/dist/
+/build/
+/frontend/dist/
+/frontend/build/
+/backend/dist/
+/backend/build/
+
+# Coverage reports
+/coverage/
+/frontend/coverage/
+/backend/coverage/
+/.nyc_output
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor and IDE files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Frontend specific
+/frontend/.DS_Store
+/frontend/node_modules
+/frontend/.vite/
+
+# Backend specific
+/backend/.DS_Store
+/backend/node_modules
+/backend/uploads/*
+!/backend/uploads/.gitkeep
+
+# Temp files
+.temp
+.tmp
+.cache/
+temp/
+tmp/
+
+# Debug files
+debug.js
+debug.log
+
+# Test files - but keep the test directory structure
+__tests__/*
+!__tests__/.gitkeep
+
+# Local AWS mock files (for development only)
+mockedS3.js
+
+# Debug/temporary components that should not be in production
+/frontend/src/pages/auth/PublicLogin.jsx
+/frontend/src/pages/settings/ApiCheck.jsx
+/frontend/src/pages/settings/FileUploadTest.jsx
+/frontend/src/utils/debug.js
+
+# Duplicate JS files when JSX files exist for the same component
+/frontend/src/App.js
+/frontend/src/index.js
+/frontend/src/components/common/ProtectedRoute.js
+/frontend/src/components/common/RoleBasedRoute.js
+/frontend/src/components/layout/AuthLayout.js
+/frontend/src/components/layout/Header.js
+/frontend/src/components/layout/Layout.js
+/frontend/src/components/layout/Sidebar.js
+/frontend/src/pages/auth/Login.js
+/frontend/src/pages/auth/Register.js
+/frontend/src/pages/dashboard/Dashboard.js
+/frontend/src/context/AuthContext.js
+
+# Debug controllers and routes
+/backend/src/controllers/debug.controller.js
+/backend/src/routes/debug.routes.js
+/backend/src/routes/mock-s3.routes.js
+
+# Seed data scripts
+/backend/src/utils/seedData.js
+
+# Development scripts
+start-dev.sh
+run-test.sh
+test-s3-integration.js
+test-file.txt
+
+# Generated documentation
+/docs/generated/
+
+# Personal development notes and todos
+TODO.md
+NOTES.md
