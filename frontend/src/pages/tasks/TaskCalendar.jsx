@@ -81,7 +81,7 @@ const TaskCalendar = () => {
           dueDate: '2025-05-25',
           assignedTo: {
             id: '3',
-            name: 'Sarah Johnson',
+            name: 'Shobha Sharma',
             avatar: 'https://i.pravatar.cc/150?img=3'
           }
         },

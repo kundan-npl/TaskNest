@@ -14,7 +14,7 @@ const UserManagement = () => {
     { id: '1', name: 'John Doe', email: 'john@example.com', role: 'admin', active: true, createdAt: '2025-01-10T10:00:00Z' },
     { id: '2', name: 'Jane Smith', email: 'jane@example.com', role: 'manager', active: true, createdAt: '2025-02-15T14:30:00Z' },
     { id: '3', name: 'Robert Brown', email: 'robert@example.com', role: 'team-member', active: true, createdAt: '2025-03-20T09:15:00Z' },
-    { id: '4', name: 'Sarah Johnson', email: 'sarah@example.com', role: 'manager', active: true, createdAt: '2025-03-22T16:45:00Z' },
+    { id: '4', name: 'Shobha Sharma', email: 'sarah@example.com', role: 'manager', active: true, createdAt: '2025-03-22T16:45:00Z' },
     { id: '5', name: 'Michael Lee', email: 'michael@example.com', role: 'team-member', active: false, createdAt: '2025-04-05T11:20:00Z' },
   ];
   

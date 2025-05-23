@@ -47,8 +47,8 @@ const ProjectDetails = () => {
         startDate: '2025-04-10',
         dueDate: '2025-06-15',
         createdAt: '2025-04-10',
-        createdBy: { id: '3', name: 'Sarah Johnson', avatar: 'https://i.pravatar.cc/150?img=3' },
-        manager: { id: '3', name: 'Sarah Johnson', avatar: 'https://i.pravatar.cc/150?img=3' },
+        createdBy: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' },
+        manager: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' },
         budget: 25500,
         currency: 'USD'
       };
@@ -56,7 +56,7 @@ const ProjectDetails = () => {
       const mockMembers = [
         { id: '1', name: 'John Doe', email: 'john@example.com', role: 'team-member', avatar: 'https://i.pravatar.cc/150?img=1' },
         { id: '2', name: 'Jane Smith', email: 'jane@example.com', role: 'team-member', avatar: 'https://i.pravatar.cc/150?img=2' },
-        { id: '3', name: 'Sarah Johnson', email: 'sarah@example.com', role: 'manager', avatar: 'https://i.pravatar.cc/150?img=3' },
+        { id: '3', name: 'Shobha Sharma', email: 'sarah@example.com', role: 'manager', avatar: 'https://i.pravatar.cc/150?img=3' },
       ];
 
       const mockTasks = [

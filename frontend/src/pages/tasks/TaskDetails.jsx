@@ -55,7 +55,7 @@ const TaskDetails = () => {
         },
         createdBy: { 
           id: '3', 
-          name: 'Sarah Johnson', 
+          name: 'Shobha Sharma', 
           email: 'sarah@example.com',
           avatar: 'https://i.pravatar.cc/150?img=3' 
         },
@@ -100,7 +100,7 @@ const TaskDetails = () => {
           createdAt: '2025-04-19T11:15:00Z',
           user: { 
             id: '3', 
-            name: 'Sarah Johnson', 
+            name: 'Shobha Sharma', 
             avatar: 'https://i.pravatar.cc/150?img=3' 
           }
         },

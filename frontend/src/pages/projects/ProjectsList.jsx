@@ -49,7 +49,7 @@ const ProjectsList = () => {
             { id: '1', name: 'John Doe', avatar: 'https://i.pravatar.cc/150?img=1' },
             { id: '2', name: 'Jane Smith', avatar: 'https://i.pravatar.cc/150?img=2' },
           ],
-          manager: { id: '3', name: 'Sarah Johnson', avatar: 'https://i.pravatar.cc/150?img=3' }
+          manager: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' }
         },
         {
           id: '2',
@@ -65,10 +65,10 @@ const ProjectsList = () => {
             completed: 6,
           },
           members: [
-            { id: '4', name: 'Mike Brown', avatar: 'https://i.pravatar.cc/150?img=4' },
+            { id: '4', name: 'Kundan Kumar', avatar: 'https://i.pravatar.cc/150?img=4' },
             { id: '5', name: 'Anna Lee', avatar: 'https://i.pravatar.cc/150?img=5' },
           ],
-          manager: { id: '3', name: 'Sarah Johnson', avatar: 'https://i.pravatar.cc/150?img=3' }
+          manager: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' }
         },
         {
           id: '3',
@@ -84,10 +84,10 @@ const ProjectsList = () => {
             completed: 10,
           },
           members: [
-            { id: '4', name: 'Mike Brown', avatar: 'https://i.pravatar.cc/150?img=4' },
-            { id: '6', name: 'Robert Wilson', avatar: 'https://i.pravatar.cc/150?img=6' },
+            { id: '4', name: 'Kundan Kumar', avatar: 'https://i.pravatar.cc/150?img=4' },
+            { id: '6', name: 'Kritanta ', avatar: 'https://i.pravatar.cc/150?img=6' },
           ],
-          manager: { id: '3', name: 'Sarah Johnson', avatar: 'https://i.pravatar.cc/150?img=3' }
+          manager: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' }
         },
       ];
       

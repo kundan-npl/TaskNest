@@ -81,10 +81,6 @@ const userRoutes = require('./src/routes/user.routes');
 const projectRoutes = require('./src/routes/project.routes');
 const taskRoutes = require('./src/routes/task.routes');
 const fileRoutes = require('./src/routes/file.routes');
-const debugRoutes = require('./src/routes/debug.routes');
-
-// Import mock S3 routes for testing environment
-const mockS3Routes = require('./src/routes/mock-s3.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -92,15 +88,8 @@ app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/projects`, projectRoutes);
 app.use(`${API_PREFIX}/tasks`, taskRoutes);
 app.use(`${API_PREFIX}/files`, fileRoutes);
-app.use(`${API_PREFIX}/debug`, debugRoutes);
 
-// Mount mock S3 routes for testing without actual AWS
-if (process.env.NODE_ENV === 'test' || process.env.MOCK_S3 === 'true') {
-  app.use(`${API_PREFIX}/mock-s3`, mockS3Routes);
-  console.log('Mock S3 routes enabled for testing');
-}
-
-// Detailed health check route with more debugging information
+// Health check route
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'success', 

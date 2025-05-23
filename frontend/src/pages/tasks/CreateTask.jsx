@@ -48,7 +48,7 @@ const CreateTask = () => {
       const mockMembers = [
         { id: '1', name: 'John Doe', avatar: 'https://i.pravatar.cc/150?img=1' },
         { id: '2', name: 'Jane Smith', avatar: 'https://i.pravatar.cc/150?img=2' },
-        { id: '3', name: 'Sarah Johnson', avatar: 'https://i.pravatar.cc/150?img=3' }
+        { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' }
       ];
       
       setProject(mockProject);
