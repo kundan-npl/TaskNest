@@ -6,9 +6,12 @@ const {
   createTask,
   updateTask,
   deleteTask,
-  uploadTaskAttachment
+  uploadTaskAttachment,
+  addComment,
+  updateTaskProgress,
+  assignTask
 } = require('../controllers/task.controller');
-const { protect, authorize } = require('../middleware/auth/auth');
+const { protect } = require('../middleware/auth/auth');
 
 // Apply protection to all routes
 router.use(protect);
@@ -16,15 +19,17 @@ router.use(protect);
 // Task routes
 router.route('/')
   .get(getTasks)
-  .post(authorize('admin', 'manager'), createTask);
+  .post(createTask);
 
 router.route('/:id')
   .get(getTask)
-  .put(updateTask)  // All authenticated users can update tasks
-  .delete(authorize('admin', 'manager'), deleteTask);
+  .put(updateTask)
+  .delete(deleteTask);
 
-// Task attachment route
-router.route('/:id/upload')
-  .post(protect, uploadTaskAttachment);
+// Task-specific actions
+router.post('/:id/comments', addComment);
+router.put('/:id/progress', updateTaskProgress);
+router.put('/:id/assign', assignTask);
+router.post('/:id/upload', uploadTaskAttachment);
 
 module.exports = router;

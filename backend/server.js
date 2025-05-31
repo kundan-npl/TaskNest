@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
 const cors = require('cors');
@@ -21,6 +22,7 @@ connectDB();
 
 // Initialize app
 const app = express();
+const server = http.createServer(app);
 
 // Body parser
 app.use(express.json());
@@ -81,6 +83,8 @@ const userRoutes = require('./src/routes/user.routes');
 const projectRoutes = require('./src/routes/project.routes');
 const taskRoutes = require('./src/routes/task.routes');
 const fileRoutes = require('./src/routes/file.routes');
+const notificationRoutes = require('./src/routes/notification.routes');
+const discussionRoutes = require('./src/routes/discussion.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -88,6 +92,9 @@ app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/projects`, projectRoutes);
 app.use(`${API_PREFIX}/tasks`, taskRoutes);
 app.use(`${API_PREFIX}/files`, fileRoutes);
+app.use(`${API_PREFIX}/notifications`, notificationRoutes);
+app.use(`${API_PREFIX}/discussions`, discussionRoutes);
+app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
@@ -114,9 +121,14 @@ app.use(errorHandler);
 // Define port
 const PORT = process.env.PORT || 5500;
 
+// Initialize Socket.IO
+const socketService = require('./src/services/socketService');
+socketService.initialize(server);
+
 // Start server
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log('Socket.IO server initialized');
 });
 
 // Handle unhandled promise rejections
@@ -126,4 +138,4 @@ process.on('unhandledRejection', (err) => {
   server.close(() => process.exit(1));
 });
 
-module.exports = server;
+module.exports = { app, server };

@@ -103,7 +103,9 @@ export const AuthProvider = ({ children }) => {
   // Check if user has a specific role
   const hasRole = (roles) => {
     if (!currentUser) return false;
-    return roles.includes(currentUser.role);
+    // Check both systemRole and role for backward compatibility
+    const userRole = currentUser.systemRole || currentUser.role;
+    return roles.includes(userRole);
   };
 
   // Update the user profile

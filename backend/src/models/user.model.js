@@ -17,10 +17,26 @@ const UserSchema = new mongoose.Schema({
       'Please add a valid email'
     ]
   },
-  role: {
+  systemRole: {
     type: String,
-    enum: ['team-member', 'manager', 'admin'],
-    default: 'team-member'
+    enum: ['user', 'admin'],
+    default: 'user'
+  },
+  department: {
+    type: String,
+    default: ''
+  },
+  jobTitle: {
+    type: String,
+    default: ''
+  },
+  phone: {
+    type: String,
+    default: ''
+  },
+  isActive: {
+    type: Boolean,
+    default: true
   },
   password: {
     type: String,

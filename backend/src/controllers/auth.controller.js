@@ -6,22 +6,18 @@ const crypto = require('crypto');
 // @access  Public
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, department, jobTitle, phone } = req.body;
 
-    // Create user with role restriction (only admin can create admins)
-    let userRole = role;
-    
-    // If role is admin and request is not from an admin, default to team-member
-    if (role === 'admin' && (!req.user || req.user.role !== 'admin')) {
-      userRole = 'team-member';
-    }
-    
-    // Create user
+    // Create user - everyone starts as a normal user
+    // Only existing admins can promote users to admin
     const user = await User.create({
       name,
       email,
       password,
-      role: userRole || 'team-member'
+      department,
+      jobTitle,
+      phone,
+      systemRole: 'user' // Everyone starts as user
     });
 
     sendTokenResponse(user, 201, res);
@@ -113,8 +109,16 @@ exports.updateDetails = async (req, res, next) => {
   try {
     const fieldsToUpdate = {
       name: req.body.name,
-      email: req.body.email
+      email: req.body.email,
+      department: req.body.department,
+      jobTitle: req.body.jobTitle,
+      phone: req.body.phone
     };
+
+    // Remove undefined fields
+    Object.keys(fieldsToUpdate).forEach(key => 
+      fieldsToUpdate[key] === undefined && delete fieldsToUpdate[key]
+    );
 
     const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
       new: true,
@@ -233,6 +237,130 @@ exports.resetPassword = async (req, res, next) => {
     await user.save();
 
     sendTokenResponse(user, 200, res);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Promote/demote user system role (admin only)
+// @route   PUT /api/v1/auth/users/:id/role
+// @access  Admin
+exports.updateUserRole = async (req, res, next) => {
+  try {
+    const { systemRole } = req.body;
+    const { id } = req.params;
+
+    // Check if requesting user is admin
+    if (req.user.systemRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    // Validate role
+    if (!['user', 'admin'].includes(systemRole)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid system role. Must be user or admin.'
+      });
+    }
+
+    // Prevent self-demotion
+    if (req.user.id === id && systemRole === 'user') {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot demote yourself.'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { systemRole },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Get all users (admin only)
+// @route   GET /api/v1/auth/users
+// @access  Admin
+exports.getAllUsers = async (req, res, next) => {
+  try {
+    // Check if requesting user is admin
+    if (req.user.systemRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    const users = await User.find({}).select('-password');
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: users
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Deactivate user account (admin only)
+// @route   PUT /api/v1/auth/users/:id/deactivate
+// @access  Admin
+exports.deactivateUser = async (req, res, next) => {
+  try {
+    // Check if requesting user is admin
+    if (req.user.systemRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    const { id } = req.params;
+
+    // Prevent self-deactivation
+    if (req.user.id === id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot deactivate your own account.'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { isActive: false },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
   } catch (err) {
     next(err);
   }

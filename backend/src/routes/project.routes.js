@@ -5,25 +5,37 @@ const {
   getProject, 
   createProject, 
   updateProject, 
-  deleteProject 
+  deleteProject,
+  addMember,
+  updateMemberRole,
+  removeMember
 } = require('../controllers/project.controller');
-const { protect, authorize } = require('../middleware/auth/auth');
+const { protect } = require('../middleware/auth/auth');
+
+// Apply protection to all routes
+router.use(protect);
 
 // Task routes
 const taskRouter = require('./task.routes');
 router.use('/:projectId/tasks', taskRouter);
 
-// Apply protection to all routes
-router.use(protect);
+// Discussion routes
+const discussionRouter = require('./discussion.routes');
+router.use('/:projectId/discussions', discussionRouter);
 
 // Project routes
 router.route('/')
   .get(getProjects)
-  .post(authorize('admin', 'manager'), createProject);
+  .post(createProject);
 
 router.route('/:id')
   .get(getProject)
-  .put(authorize('admin', 'manager'), updateProject)
-  .delete(authorize('admin', 'manager'), deleteProject);
+  .put(updateProject)
+  .delete(deleteProject);
+
+// Member management routes
+router.post('/:id/members', addMember);
+router.put('/:id/members/:memberId', updateMemberRole);
+router.delete('/:id/members/:memberId', removeMember);
 
 module.exports = router;

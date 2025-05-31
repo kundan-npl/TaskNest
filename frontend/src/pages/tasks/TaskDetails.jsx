@@ -328,7 +328,7 @@ const TaskDetails = () => {
             <h1 className="text-2xl font-bold text-gray-800">{task.title}</h1>
           </div>
           
-          {hasRole(['admin', 'manager', 'team-member']) && (
+          {hasRole(['admin', 'user']) && (
             <div className="flex gap-2">
               <Link
                 to={`/tasks/${id}/edit`}
@@ -380,7 +380,7 @@ const TaskDetails = () => {
                 {renderTaskStatus(task.status)}
               </div>
               
-              {hasRole(['admin', 'manager', 'team-member']) && (
+              {hasRole(['admin', 'user']) && (
                 <div className="flex flex-wrap gap-2">
                   <button
                     disabled={task.status === 'not-started' || statusUpdating}
@@ -515,7 +515,7 @@ const TaskDetails = () => {
                 ))}
               </div>
               
-              {hasRole(['admin', 'manager', 'team-member']) && (
+              {hasRole(['admin', 'user']) && (
                 <div className="mt-4">
                   <button className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center">
                     <svg className="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -576,7 +576,7 @@ const TaskDetails = () => {
               </>
             )}
             
-            {hasRole(['admin', 'manager', 'team-member']) && (
+            {hasRole(['admin', 'user']) && (
               <div className="mb-6">
                 <button 
                   onClick={() => setShowFileUploader(true)}
@@ -645,7 +645,7 @@ const TaskDetails = () => {
               </div>
             )}
             
-            {hasRole(['admin', 'manager', 'team-member']) && (
+            {hasRole(['admin', 'user']) && (
               <form onSubmit={handleCommentSubmit}>
                 <div className="mb-4">
                   <textarea

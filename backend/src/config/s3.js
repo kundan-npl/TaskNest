@@ -1,33 +1,39 @@
 // AWS S3 Configuration
-const AWS = require('aws-sdk');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 require('dotenv').config();
 
-// Configure AWS SDK
-AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+// Initialize S3 client
+let s3ClientConfig = {
   region: process.env.AWS_REGION || 'us-east-1'
-});
+};
 
-// Initialize S3 instance
-let s3Options = {};
+// Add credentials if provided
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  s3ClientConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  };
+}
 
 // Use a local S3 endpoint if in development/test mode and endpoint is specified
 if (process.env.NODE_ENV !== 'production' && process.env.AWS_S3_ENDPOINT) {
-  s3Options.endpoint = process.env.AWS_S3_ENDPOINT;
-  s3Options.s3ForcePathStyle = true;
+  s3ClientConfig.endpoint = process.env.AWS_S3_ENDPOINT;
+  s3ClientConfig.forcePathStyle = true;
 }
 
 // For local testing without actual AWS credentials
 if (process.env.NODE_ENV === 'test' || process.env.MOCK_S3 === 'true') {
   console.log('Using mock S3 implementation for testing');
-  s3Options.endpoint = 'http://localhost:4566'; // LocalStack default endpoint
-  s3Options.s3ForcePathStyle = true;
-  s3Options.accessKeyId = 'test';
-  s3Options.secretAccessKey = 'test';
+  s3ClientConfig.endpoint = 'http://localhost:4566'; // LocalStack default endpoint
+  s3ClientConfig.forcePathStyle = true;
+  s3ClientConfig.credentials = {
+    accessKeyId: 'test',
+    secretAccessKey: 'test'
+  };
 }
 
-const s3 = new AWS.S3(s3Options);
+const s3Client = new S3Client(s3ClientConfig);
 
 // S3 bucket name
 const bucketName = process.env.AWS_S3_BUCKET_NAME || 'tasknest-uploads';
@@ -40,15 +46,14 @@ const bucketName = process.env.AWS_S3_BUCKET_NAME || 'tasknest-uploads';
  * @returns {Promise<string>} - Presigned URL
  */
 const generateUploadUrl = async (key, contentType, expiresIn = 60) => {
-  const params = {
+  const command = new PutObjectCommand({
     Bucket: bucketName,
     Key: key,
-    ContentType: contentType,
-    Expires: expiresIn
-  };
+    ContentType: contentType
+  });
 
   try {
-    const uploadUrl = await s3.getSignedUrlPromise('putObject', params);
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn });
     return uploadUrl;
   } catch (error) {
     console.error('Error generating S3 presigned URL:', error);
@@ -63,14 +68,13 @@ const generateUploadUrl = async (key, contentType, expiresIn = 60) => {
  * @returns {Promise<string>} - Presigned URL
  */
 const generateDownloadUrl = async (key, expiresIn = 3600) => {
-  const params = {
+  const command = new GetObjectCommand({
     Bucket: bucketName,
-    Key: key,
-    Expires: expiresIn
-  };
+    Key: key
+  });
 
   try {
-    const downloadUrl = await s3.getSignedUrlPromise('getObject', params);
+    const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn });
     return downloadUrl;
   } catch (error) {
     console.error('Error generating S3 download URL:', error);
@@ -84,13 +88,13 @@ const generateDownloadUrl = async (key, expiresIn = 3600) => {
  * @returns {Promise<boolean>} - Success status
  */
 const deleteFile = async (key) => {
-  const params = {
+  const command = new DeleteObjectCommand({
     Bucket: bucketName,
     Key: key
-  };
+  });
 
   try {
-    await s3.deleteObject(params).promise();
+    await s3Client.send(command);
     return true;
   } catch (error) {
     console.error('Error deleting file from S3:', error);
@@ -104,14 +108,14 @@ const deleteFile = async (key) => {
  * @returns {Promise<Array>} - Array of file information
  */
 const listFiles = async (prefix) => {
-  const params = {
+  const command = new ListObjectsV2Command({
     Bucket: bucketName,
     Prefix: prefix
-  };
+  });
 
   try {
-    const data = await s3.listObjectsV2(params).promise();
-    return data.Contents.map(item => ({
+    const data = await s3Client.send(command);
+    return (data.Contents || []).map(item => ({
       key: item.Key,
       size: item.Size,
       lastModified: item.LastModified
@@ -123,7 +127,7 @@ const listFiles = async (prefix) => {
 };
 
 module.exports = {
-  s3,
+  s3Client,
   bucketName,
   generateUploadUrl,
   generateDownloadUrl,

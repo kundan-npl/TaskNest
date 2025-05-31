@@ -196,17 +196,20 @@ const UserProfile = () => {
                 
                 <div>
                   <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
+                    System Role
                   </label>
                   <input
                     type="text"
                     id="role"
                     name="role"
                     className="form-input w-full bg-gray-100"
-                    value={formData.role === 'admin' ? 'Administrator' : formData.role === 'manager' ? 'Project Manager' : 'Team Member'}
+                    value={formData.role === 'admin' ? 'System Administrator' : formData.role === 'manager' ? 'Manager' : 'Team Member'}
                     readOnly
                     disabled
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Your project-specific roles may vary by project
+                  </p>
                 </div>
               </div>
               
@@ -293,6 +296,71 @@ const UserProfile = () => {
                 </button>
               </div>
             </form>
+          </div>
+          
+          {/* Project Roles Section */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">My Project Roles</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Your roles across different projects. These determine your permissions within each project.
+            </p>
+            
+            {/* Mock project roles data */}
+            <div className="space-y-4">
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-gray-900">TaskNest Frontend Development</h3>
+                    <p className="text-sm text-gray-500">Active project • Due June 15, 2025</p>
+                  </div>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    Supervisor
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Full project control, can manage all aspects including members and settings
+                </div>
+              </div>
+              
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-gray-900">TaskNest Backend API</h3>
+                    <p className="text-sm text-gray-500">Active project • Due June 1, 2025</p>
+                  </div>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    Team Lead
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Can manage tasks, assign work, and coordinate team activities
+                </div>
+              </div>
+              
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-gray-900">TaskNest Database Design</h3>
+                    <p className="text-sm text-gray-500">Completed project • Completed May 15, 2025</p>
+                  </div>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Team Member
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Can work on assigned tasks and collaborate with team
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Role Definitions</h4>
+              <div className="text-xs text-blue-800 space-y-1">
+                <div><strong>Supervisor:</strong> Full project control and member management</div>
+                <div><strong>Team Lead:</strong> Task management and team coordination</div>
+                <div><strong>Team Member:</strong> Task execution and collaboration</div>
+              </div>
+            </div>
           </div>
         </div>
         

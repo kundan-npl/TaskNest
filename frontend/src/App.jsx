@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
+import { SocketProvider } from './context/SocketContext.jsx';
 
 // Layout components
 import Layout from './components/layout/Layout.jsx';
@@ -48,7 +49,8 @@ function App() {
 
   return (
     <AuthProvider>
-      <Routes>
+      <SocketProvider>
+        <Routes>
         {/* Auth Routes */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<Login />} />
@@ -67,7 +69,7 @@ function App() {
           <Route 
             path="/projects/create" 
             element={
-              <RoleBasedRoute allowedRoles={['admin', 'manager']}>
+              <RoleBasedRoute allowedRoles={['admin', 'user']}>
                 <CreateProject />
               </RoleBasedRoute>
             } 
@@ -75,7 +77,7 @@ function App() {
           <Route 
             path="/projects/:id/edit" 
             element={
-              <RoleBasedRoute allowedRoles={['admin', 'manager']}>
+              <RoleBasedRoute allowedRoles={['admin', 'user']}>
                 <EditProject />
               </RoleBasedRoute>
             } 
@@ -102,6 +104,7 @@ function App() {
         {/* Default route redirect */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      </SocketProvider>
     </AuthProvider>
   );
 }

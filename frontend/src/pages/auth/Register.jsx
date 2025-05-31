@@ -46,7 +46,7 @@ const Register = () => {
     if (!validatePassword()) return;
     try {
       setLoading(true);
-      await register({ name, email, password, role: 'team-member' });
+      await register({ name, email, password });
       toast.success('Registration successful!');
       navigate('/');
     } catch (error) {

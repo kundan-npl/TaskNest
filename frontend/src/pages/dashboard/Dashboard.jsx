@@ -10,11 +10,10 @@ import TaskStatusChart from '../../components/charts/TaskStatusChart.jsx';
 import TaskCompletionChart from '../../components/charts/TaskCompletionChart.jsx';
 import RoleBasedStats from '../../components/dashboard/RoleBasedStats.jsx';
 
-// Role constants
+// Role constants - Updated to match backend systemRole values
 const ROLES = {
   ADMIN: 'admin',
-  MANAGER: 'manager',
-  TEAM_MEMBER: 'team_member'
+  USER: 'user'
 };
 
 const Dashboard = () => {
@@ -268,10 +267,12 @@ const Dashboard = () => {
         <div className="flex items-center">
           <p className="text-gray-600 mr-2">Welcome back, {currentUser?.name || 'User'}!</p>
           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-            ${currentUser?.role === ROLES.ADMIN ? 'bg-purple-100 text-purple-800' : 
-              currentUser?.role === ROLES.MANAGER ? 'bg-blue-100 text-blue-800' : 
+            ${(currentUser?.systemRole || currentUser?.role) === ROLES.ADMIN ? 'bg-purple-100 text-purple-800' : 
               'bg-green-100 text-green-800'}`}>
-            {currentUser?.role || 'user'}
+            {(currentUser?.systemRole || currentUser?.role) === ROLES.ADMIN ? 'System Admin' : 'User'}
+          </span>
+          <span className="text-xs text-gray-500 ml-2">
+            • Project roles vary by project
           </span>
         </div>
       </div>
@@ -287,10 +288,7 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">
-                {hasRole(['admin']) ? 'All Projects' : 
-                 hasRole(['manager']) ? 'My Projects' : 'Associated Projects'}
-              </div>
+              <div className="text-sm font-medium text-gray-500 mb-1">My Projects</div>
               <div className="text-3xl font-bold text-gray-800">{projects.length}</div>
             </div>
             <div className="rounded-full bg-indigo-100 p-3">
@@ -315,10 +313,8 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">
-                {hasRole(['admin', 'manager']) ? 'Total Tasks' : 'My Tasks'}
-              </div>
-              <div className="text-3xl font-bold text-gray-800">{taskStats.total}</div>
+              <div className="text-sm font-medium text-gray-500 mb-1">My Tasks</div>
+              <div className="text-3xl font-bold text-gray-800">{userTasks.length}</div>
             </div>
             <div className="rounded-full bg-blue-100 p-3">
               <svg className="w-6 h-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -329,11 +325,11 @@ const Dashboard = () => {
           <div className="mt-4 flex justify-between">
             <div>
               <span className="text-xs font-medium text-green-500 bg-green-100 px-2 py-1 rounded-full">
-                {Math.round((taskStats.completed / taskStats.total) * 100)}% Complete
+                {userTasks.length > 0 ? Math.round((userTasks.filter(t => t.status === 'completed').length / userTasks.length) * 100) : 0}% Complete
               </span>
             </div>
             <span className="text-sm text-gray-500">
-              {taskStats.completed} of {taskStats.total}
+              {userTasks.filter(t => t.status === 'completed').length} of {userTasks.length}
             </span>
           </div>
         </div>
@@ -343,7 +339,7 @@ const Dashboard = () => {
           <div className="flex justify-between items-center">
             <div>
               <div className="text-sm font-medium text-gray-500 mb-1">In Progress</div>
-              <div className="text-3xl font-bold text-gray-800">{taskStats.inProgress}</div>
+              <div className="text-3xl font-bold text-gray-800">{userTasks.filter(t => t.status === 'in-progress').length}</div>
             </div>
             <div className="rounded-full bg-yellow-100 p-3">
               <svg className="w-6 h-6 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -354,8 +350,8 @@ const Dashboard = () => {
           <div className="mt-4">
             <div className="w-full bg-gray-200 rounded-full h-2.5">
               <div className="bg-yellow-400 h-2.5 rounded-full" style={{ 
-                width: taskStats.total > 0 
-                  ? `${(taskStats.inProgress / taskStats.total) * 100}%` 
+                width: userTasks.length > 0 
+                  ? `${(userTasks.filter(t => t.status === 'in-progress').length / userTasks.length) * 100}%` 
                   : '0%' 
               }}></div>
             </div>
@@ -366,9 +362,7 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">
-                {hasRole(['admin', 'manager']) ? 'Overdue Tasks' : 'My Overdue Tasks'}
-              </div>
+              <div className="text-sm font-medium text-gray-500 mb-1">My Overdue Tasks</div>
               <div className="text-3xl font-bold text-gray-800">{overdueTasks.length}</div>
             </div>
             <div className="rounded-full bg-red-100 p-3">
@@ -396,27 +390,26 @@ const Dashboard = () => {
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Task Status Distribution */}
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              {hasRole(['admin', 'manager']) ? 'Task Status Overview' : 'My Task Status'}
-            </h2>
-            <TaskStatusChart taskStats={taskStats} />
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">My Task Status</h2>
+            <TaskStatusChart taskStats={{
+              total: userTasks.length,
+              completed: userTasks.filter(t => t.status === 'completed').length,
+              inProgress: userTasks.filter(t => t.status === 'in-progress').length,
+              notStarted: userTasks.filter(t => t.status === 'not-started').length,
+              onHold: userTasks.filter(t => t.status === 'on-hold').length
+            }} />
           </div>
           
           {/* Weekly Task Completion */}
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              {hasRole(['admin', 'manager']) ? 'Team Weekly Progress' : 'My Weekly Progress'}  
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">My Weekly Progress</h2>
             <TaskCompletionChart weeklyData={weeklyData} />
           </div>
           
           {/* Recent Projects - Different view based on role */}
           <div className="bg-white rounded-lg shadow-md p-6 md:col-span-2">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">
-                {hasRole(['admin']) ? 'All Recent Projects' : 
-                 hasRole(['manager']) ? 'My Projects' : 'Projects I\'m Working On'}
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-800">My Recent Projects</h2>
               <Link to="/projects" className="text-sm text-primary-600 hover:underline">
                 View all
               </Link>
@@ -634,17 +627,15 @@ const Dashboard = () => {
             <span className="text-sm font-medium text-gray-700 text-center">My Tasks</span>
           </Link>
           
-          {/* New Project - Admin and Manager only */}
-          {hasRole(['admin', 'manager']) && (
-            <Link to="/projects/create" className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100">
-              <div className="rounded-full bg-green-100 p-3 mb-2">
-                <svg className="w-6 h-6 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-              </div>
-              <span className="text-sm font-medium text-gray-700 text-center">New Project</span>
-            </Link>
-          )}
+          {/* New Project - All users can create projects and become supervisors */}
+          <Link to="/projects/create" className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100">
+            <div className="rounded-full bg-green-100 p-3 mb-2">
+              <svg className="w-6 h-6 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <span className="text-sm font-medium text-gray-700 text-center">New Project</span>
+          </Link>
           
           {/* Calendar - All users */}
           <Link to="/tasks/calendar" className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100">
@@ -689,8 +680,8 @@ const Dashboard = () => {
             </Link>
           )}
           
-          {/* Reports - Admin and Manager only */}
-          {hasRole(['admin', 'manager']) && (
+          {/* Reports - Admin only */}
+          {hasRole(['admin']) && (
             <Link to="/reports" className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100">
               <div className="rounded-full bg-red-100 p-3 mb-2">
                 <svg className="w-6 h-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -703,7 +694,7 @@ const Dashboard = () => {
         </div>
       </div>
       
-      {/* Admin-only System Overview and Manager-only Team Performance Sections */}
+      {/* Admin-only System Overview */}
       {hasRole(['admin']) && (
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">System Overview</h2>
@@ -766,128 +757,6 @@ const Dashboard = () => {
                   </div>
                   <span className="text-xs text-gray-500">Yesterday, 2:12 PM</span>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {hasRole(['manager']) && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Team Performance</h2>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="border rounded-lg p-4">
-                <h3 className="text-sm font-medium text-gray-500 mb-3">Task Completion Rate</h3>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-2xl font-bold text-gray-800">78%</span>
-                    <span className="text-xs text-green-600 ml-2">+5% from last month</span>
-                  </div>
-                  <div className="w-16 h-16">
-                    <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center" style={{ background: 'conic-gradient(#4f46e5 78%, #e5e7eb 0)' }}>
-                      <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center">
-                        <span className="text-xs font-medium">78%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="border rounded-lg p-4">
-                <h3 className="text-sm font-medium text-gray-500 mb-3">Team Velocity</h3>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-2xl font-bold text-gray-800">42</span>
-                    <span className="text-xs text-gray-600 ml-2">story points/sprint</span>
-                  </div>
-                  <div className="text-xs text-green-600">+8% from previous sprint</div>
-                </div>
-                <div className="mt-3 space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>Current Sprint</span>
-                    <span className="font-medium">42 pts</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Previous Sprint</span>
-                    <span>39 pts</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Average (Last 5)</span>
-                    <span>37 pts</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="mt-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Team Member Performance</h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead>
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tasks Completed</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">On-Time %</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current Load</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    <tr>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-8 w-8 rounded-full bg-gray-200 flex-shrink-0 mr-2"></div>
-                          <div className="text-sm font-medium text-gray-900">John Doe</div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm">12</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm">92%</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
-                            <div className="bg-green-500 h-1.5 rounded-full" style={{ width: '65%' }}></div>
-                          </div>
-                          <span className="text-xs">65%</span>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-8 w-8 rounded-full bg-gray-200 flex-shrink-0 mr-2"></div>
-                          <div className="text-sm font-medium text-gray-900">Jane Smith</div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm">9</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm">87%</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
-                            <div className="bg-yellow-500 h-1.5 rounded-full" style={{ width: '85%' }}></div>
-                          </div>
-                          <span className="text-xs">85%</span>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-8 w-8 rounded-full bg-gray-200 flex-shrink-0 mr-2"></div>
-                          <div className="text-sm font-medium text-gray-900">Kundan Kumar</div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm">14</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm">95%</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
-                            <div className="bg-green-500 h-1.5 rounded-full" style={{ width: '70%' }}></div>
-                          </div>
-                          <span className="text-xs">70%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
