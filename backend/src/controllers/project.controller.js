@@ -9,7 +9,10 @@ const { notifyProjectMembers, createNotification } = require('./notification.con
  * @returns {Object|null} - Member object if found, null otherwise
  */
 const getUserProjectRole = (project, userId) => {
-  return project.members.find(member => member.user.toString() === userId.toString());
+  return project.members.find(member => {
+    const memberUserId = member.user._id || member.user;
+    return memberUserId.toString() === userId.toString();
+  });
 };
 
 /**
@@ -65,8 +68,15 @@ exports.getProject = async (req, res, next) => {
       });
     }
 
+    // Debug logging
+    console.log('Project ID:', req.params.id);
+    console.log('User ID:', req.user.id);
+    console.log('Project members:', project.members.map(m => ({ userId: m.user._id || m.user, role: m.role })));
+
     // Check if user is a member of the project
     const userMember = getUserProjectRole(project, req.user.id);
+    
+    console.log('User member found:', userMember);
     
     if (!userMember) {
       return res.status(403).json({

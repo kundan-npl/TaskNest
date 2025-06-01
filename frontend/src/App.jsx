@@ -3,6 +3,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { SocketProvider } from './context/SocketContext.jsx';
 
+// Import enhanced dark theme styles
+import './assets/styles/dark-theme.css';
+
 // Layout components
 import Layout from './components/layout/Layout.jsx';
 import AuthLayout from './components/layout/AuthLayout.jsx';
@@ -25,6 +28,9 @@ import CreateTask from './pages/tasks/CreateTask.jsx';
 import TaskCalendar from './pages/tasks/TaskCalendar.jsx';
 import UserProfile from './pages/profile/UserProfile.jsx';
 import Settings from './pages/settings/Settings.jsx';
+
+// Testing pages
+// Widget integration test removed during cleanup
 
 // Protected route component
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
@@ -99,6 +105,9 @@ function App() {
               </RoleBasedRoute>
             } 
           />
+          
+          {/* Testing Routes - Only for development */}
+          {/* Widget test route removed during cleanup */}
         </Route>
 
         {/* Default route redirect */}

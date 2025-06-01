@@ -5,23 +5,33 @@ import Header from './Header.jsx';
 import { ConnectionStatus } from '../common/RealTimeIndicators.jsx';
 
 const Layout = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // Desktop sidebar collapsed
   
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
+  const toggleSidebarCollapse = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
+  };
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       {/* Sidebar */}
-      <Sidebar open={sidebarOpen} toggleSidebar={toggleSidebar} />
+      <Sidebar 
+        open={sidebarOpen} 
+        collapsed={sidebarCollapsed}
+        toggleSidebar={toggleSidebar} 
+        toggleCollapse={toggleSidebarCollapse}
+      />
       
       {/* Main content */}
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         <Header toggleSidebar={toggleSidebar} />
         
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+          <div className="max-w-full">
             <Outlet />
           </div>
         </main>

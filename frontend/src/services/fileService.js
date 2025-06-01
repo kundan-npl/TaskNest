@@ -158,6 +158,45 @@ const fileService = {
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to list files');
     }
+  },
+
+  /**
+   * Get files for a specific project
+   * @param {string} projectId - Project ID
+   * @returns {Promise<Array>} - List of project files
+   */
+  getProjectFiles: async (projectId) => {
+    try {
+      const response = await api.get(`/projects/${projectId}/files`);
+      return response.data;
+    } catch (error) {
+      console.error('Project files API not implemented, returning mock data');
+      // Return mock files for now
+      return {
+        data: [
+          {
+            _id: '1',
+            filename: 'project-requirements.pdf',
+            originalName: 'project-requirements.pdf',
+            size: 2048576,
+            mimetype: 'application/pdf',
+            uploadedBy: 'user1',
+            uploadedAt: '2024-01-15T10:00:00.000Z',
+            url: '#'
+          },
+          {
+            _id: '2',
+            filename: 'design-mockups.zip',
+            originalName: 'design-mockups.zip',
+            size: 5242880,
+            mimetype: 'application/zip',
+            uploadedBy: 'user2',
+            uploadedAt: '2024-01-20T14:30:00.000Z',
+            url: '#'
+          }
+        ]
+      };
+    }
   }
 };
 

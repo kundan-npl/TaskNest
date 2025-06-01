@@ -35,6 +35,54 @@
   .card {
     @apply bg-white rounded-lg shadow-card p-6;
   }
+  
+  /* Widget Card Styles */
+  .widget-card {
+    @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md border border-gray-200 dark:border-gray-700 transition-all duration-200 ease-in-out;
+  }
+  
+  .widget-card:hover {
+    @apply border-gray-300 dark:border-gray-600;
+  }
+  
+  .widget-header {
+    @apply flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700;
+  }
+  
+  .widget-title {
+    @apply text-lg font-semibold text-gray-900 dark:text-white;
+  }
+  
+  .widget-content {
+    @apply p-6;
+  }
+  
+  .widget-footer {
+    @apply px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 rounded-b-xl;
+  }
+  
+  /* Widget Grid Layout */
+  .widgets-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+  
+  .widget-span-2 {
+    @apply md:col-span-2;
+  }
+  
+  .widget-span-3 {
+    @apply lg:col-span-3;
+  }
+  
+  .widget-full-height {
+    @apply h-full;
+  }
+  
+  /* Dark mode widget enhancements */
+  .dark .widget-card {
+    @apply shadow-lg shadow-gray-900/10;
+  }
+  
   .form-input {
     @apply w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
   }
@@ -46,27 +94,139 @@
   }
 }
 
-/* Task status colors */
-.status-todo {
-  @apply bg-gray-200 text-gray-800;
-}
-.status-in-progress {
-  @apply bg-blue-200 text-blue-800;
-}
-.status-done {
-  @apply bg-green-200 text-green-800;
+/* Enhanced dark mode support and better color contrast */
+
+/* Base dark mode styles */
+html.dark {
+  color-scheme: dark;
 }
 
-/* Priority level colors */
-.priority-low {
-  @apply bg-gray-100 text-gray-800;
+html.dark body {
+  @apply bg-gray-900 text-gray-100;
 }
-.priority-medium {
-  @apply bg-yellow-100 text-yellow-800;
+
+/* Text contrast improvements */
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  @apply text-gray-100;
 }
-.priority-high {
-  @apply bg-orange-100 text-orange-800;
+
+.dark p, .dark span, .dark div {
+  @apply text-gray-300;
 }
-.priority-urgent {
-  @apply bg-red-100 text-red-800;
+
+/* Form elements dark mode */
+.dark .form-input {
+  @apply bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400;
+}
+
+.dark .form-input::placeholder {
+  @apply text-gray-400;
+}
+
+.dark .form-input:focus {
+  @apply ring-blue-500 border-blue-500;
+}
+
+.dark .form-label {
+  @apply text-gray-300;
+}
+
+/* Enhanced status colors for dark mode */
+.dark .status-todo {
+  @apply bg-gray-700 text-gray-300;
+}
+
+.dark .status-in-progress {
+  @apply bg-blue-900/40 text-blue-400;
+}
+
+.dark .status-done {
+  @apply bg-green-900/40 text-green-400;
+}
+
+/* Enhanced priority colors for dark mode */
+.dark .priority-low {
+  @apply bg-gray-700 text-gray-300;
+}
+
+.dark .priority-medium {
+  @apply bg-yellow-900/40 text-yellow-400;
+}
+
+.dark .priority-high {
+  @apply bg-orange-900/40 text-orange-400;
+}
+
+.dark .priority-urgent {
+  @apply bg-red-900/40 text-red-400;
+}
+
+/* Button improvements for dark mode */
+.dark .btn-secondary {
+  @apply bg-gray-600 hover:bg-gray-500 text-gray-100;
+}
+
+/* Card improvements for dark mode */
+.dark .card {
+  @apply bg-gray-800 text-gray-100;
+}
+
+/* Additional utility classes for better theme support */
+@layer utilities {
+  .text-contrast {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  
+  .text-muted {
+    @apply text-gray-600 dark:text-gray-400;
+  }
+  
+  .text-subtle {
+    @apply text-gray-500 dark:text-gray-500;
+  }
+  
+  .bg-surface {
+    @apply bg-white dark:bg-gray-800;
+  }
+  
+  .bg-surface-secondary {
+    @apply bg-gray-50 dark:bg-gray-700;
+  }
+  
+  .border-surface {
+    @apply border-gray-200 dark:border-gray-700;
+  }
+  
+  /* Focus states for better accessibility */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800;
+  }
+  
+  /* Hover states */
+  .hover-surface {
+    @apply hover:bg-gray-50 dark:hover:bg-gray-700;
+  }
+  
+  /* Selection states */
+  .selected-surface {
+    @apply bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800;
+  }
+  
+  /* Scrollbar styling for dark mode */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .dark ::-webkit-scrollbar-track {
+    background: #374151;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 4px;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
 }

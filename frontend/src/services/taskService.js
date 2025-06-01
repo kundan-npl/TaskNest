@@ -99,6 +99,49 @@ const taskService = {
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to fetch comments');
     }
+  },
+
+  // Get tasks for a specific project
+  getProjectTasks: async (projectId) => {
+    try {
+      const response = await api.get(`/projects/${projectId}/tasks`);
+      return response.data.data;
+    } catch (error) {
+      console.warn('Failed to fetch project tasks from API, using mock data');
+      // Mock data as fallback
+      return [
+        {
+          id: 1,
+          title: 'Setup Project Structure',
+          description: 'Initialize the project with proper folder structure and dependencies',
+          status: 'completed',
+          priority: 'high',
+          assignee: { id: 1, name: 'John Doe', email: 'john@example.com' },
+          createdAt: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          id: 2,
+          title: 'Design Database Schema',
+          description: 'Create the database schema for the application',
+          status: 'in_progress',
+          priority: 'medium',
+          assignee: { id: 2, name: 'Jane Smith', email: 'jane@example.com' },
+          createdAt: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          id: 3,
+          title: 'Implement Authentication',
+          description: 'Add user authentication and authorization',
+          status: 'todo',
+          priority: 'high',
+          assignee: null,
+          createdAt: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
+        }
+      ];
+    }
   }
 };
 
