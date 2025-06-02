@@ -10,6 +10,15 @@ import TaskStatusChart from '../../components/charts/TaskStatusChart.jsx';
 import TaskCompletionChart from '../../components/charts/TaskCompletionChart.jsx';
 import RoleBasedStats from '../../components/dashboard/RoleBasedStats.jsx';
 
+// Import new reusable components
+import TaskStatusBadge from '../../components/common/TaskStatusBadge.jsx';
+import ProjectStatusBadge from '../../components/common/ProjectStatusBadge.jsx';
+import TaskCard from '../../components/common/TaskCard.jsx';
+import StatsCard from '../../components/common/StatsCard.jsx';
+
+// Import custom hooks
+import { useTaskStats, useProjectStats, useSortedTasks, useWeeklyData } from '../../hooks/useDashboardStats.js';
+
 // Role constants - Updated to match backend systemRole values
 const ROLES = {
   ADMIN: 'admin',
@@ -22,14 +31,12 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [taskStats, setTaskStats] = useState({
-    total: 0,
-    completed: 0,
-    inProgress: 0,
-    notStarted: 0,
-    onHold: 0
-  });
-  const [weeklyData, setWeeklyData] = useState([]);
+
+  // Use custom hooks for calculations
+  const taskStats = useTaskStats(tasks, currentUser?.id);
+  const projectStats = useProjectStats(projects, currentUser?.id);
+  const { sortedTasks, overdueTasks, upcomingTasks, completedTasks } = useSortedTasks(tasks, currentUser?.id);
+  const weeklyData = useWeeklyData();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -192,38 +199,8 @@ const Dashboard = () => {
           }
         ];
         
-        // Calculate task stats
-        const total = mockTasks.length;
-        const completed = mockTasks.filter(task => task.status === 'completed').length;
-        const inProgress = mockTasks.filter(task => task.status === 'in-progress').length;
-        const notStarted = mockTasks.filter(task => task.status === 'not-started').length;
-        const onHold = mockTasks.filter(task => task.status === 'on-hold').length;
-        
-        // Generate mock weekly data for task completion chart
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const mockWeeklyData = days.map(day => {
-          const created = Math.floor(Math.random() * 5) + 1;
-          const completed = Math.floor(Math.random() * created) + (created > 3 ? 0 : 1);
-          const completion = created > 0 ? Math.round((completed / created) * 100) : 0;
-          
-          return {
-            day,
-            created,
-            completed,
-            completion
-          };
-        });
-        
         setProjects(mockProjects);
         setTasks(mockTasks);
-        setTaskStats({
-          total,
-          completed,
-          inProgress,
-          notStarted,
-          onHold
-        });
-        setWeeklyData(mockWeeklyData);
       } catch (error) {
         toast.error('Failed to load dashboard data');
         console.error(error);
@@ -234,21 +211,6 @@ const Dashboard = () => {
     
     fetchDashboardData();
   }, []);
-  
-  // Filter tasks that are assigned to the current user
-  const userTasks = tasks.filter(task => 
-    task.assignedTo && task.assignedTo.id === (currentUser?.id || 'unknown')
-  );
-  
-  // Sort tasks by due date (ascending)
-  const sortedTasks = [...userTasks].sort((a, b) => 
-    new Date(a.dueDate) - new Date(b.dueDate)
-  );
-  
-  // Filter overdue tasks
-  const overdueTasks = sortedTasks.filter(task => 
-    new Date(task.dueDate) < new Date() && task.status !== 'completed'
-  );
   
   if (loading) {
     return (
@@ -284,104 +246,43 @@ const Dashboard = () => {
       
       {/* Stats Overview - Shown to all users but with role-specific content */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        {/* Project Stats - All users can see projects */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">My Projects</div>
-              <div className="text-3xl font-bold text-gray-800">{projects.length}</div>
-            </div>
-            <div className="rounded-full bg-indigo-100 p-3">
-              <svg className="w-6 h-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-            </div>
-          </div>
-          <div className="mt-4 flex justify-between">
-            <div>
-              <span className="text-xs font-medium text-green-500 bg-green-100 px-2 py-1 rounded-full">
-                {projects.filter(p => p.status === 'active').length} Active
-              </span>
-            </div>
-            <Link to="/projects" className="text-sm text-primary-600 hover:underline">
-              View all
-            </Link>
-          </div>
-        </div>
+        <StatsCard
+          title="My Projects"
+          value={projects.length}
+          iconType="projects"
+          color="indigo"
+          badge={`${projects.filter(p => p.status === 'active').length} Active`}
+          actionLabel="View all"
+          actionLink="/projects"
+        />
         
-        {/* Task Stats - All users can see tasks */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">My Tasks</div>
-              <div className="text-3xl font-bold text-gray-800">{userTasks.length}</div>
-            </div>
-            <div className="rounded-full bg-blue-100 p-3">
-              <svg className="w-6 h-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-          </div>
-          <div className="mt-4 flex justify-between">
-            <div>
-              <span className="text-xs font-medium text-green-500 bg-green-100 px-2 py-1 rounded-full">
-                {userTasks.length > 0 ? Math.round((userTasks.filter(t => t.status === 'completed').length / userTasks.length) * 100) : 0}% Complete
-              </span>
-            </div>
-            <span className="text-sm text-gray-500">
-              {userTasks.filter(t => t.status === 'completed').length} of {userTasks.length}
-            </span>
-          </div>
-        </div>
+        <StatsCard
+          title="My Tasks"
+          value={taskStats.total}
+          iconType="tasks"
+          color="blue"
+          progressValue={taskStats.total > 0 ? Math.round((taskStats.completed / taskStats.total) * 100) : 0}
+          progressLabel={`${taskStats.completed} of ${taskStats.total}`}
+          badge={`${taskStats.total > 0 ? Math.round((taskStats.completed / taskStats.total) * 100) : 0}% Complete`}
+        />
         
-        {/* In Progress Tasks - All users see but with context */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">In Progress</div>
-              <div className="text-3xl font-bold text-gray-800">{userTasks.filter(t => t.status === 'in-progress').length}</div>
-            </div>
-            <div className="rounded-full bg-yellow-100 p-3">
-              <svg className="w-6 h-6 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div className="bg-yellow-400 h-2.5 rounded-full" style={{ 
-                width: userTasks.length > 0 
-                  ? `${(userTasks.filter(t => t.status === 'in-progress').length / userTasks.length) * 100}%` 
-                  : '0%' 
-              }}></div>
-            </div>
-          </div>
-        </div>
+        <StatsCard
+          title="In Progress"
+          value={taskStats.inProgress}
+          iconType="clock"
+          color="yellow"
+          progressValue={taskStats.total > 0 ? (taskStats.inProgress / taskStats.total) * 100 : 0}
+          showProgressBar={true}
+        />
         
-        {/* Overdue Tasks - All users see but with context */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-sm font-medium text-gray-500 mb-1">My Overdue Tasks</div>
-              <div className="text-3xl font-bold text-gray-800">{overdueTasks.length}</div>
-            </div>
-            <div className="rounded-full bg-red-100 p-3">
-              <svg className="w-6 h-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-          <div className="mt-4">
-            <span className={`text-xs font-medium ${
-              overdueTasks.length > 0 ? 'text-red-500 bg-red-100' : 'text-green-500 bg-green-100'
-            } px-2 py-1 rounded-full`}>
-              {overdueTasks.length > 0 
-                ? `${overdueTasks.length} tasks need attention` 
-                : 'All tasks on schedule'
-              }
-            </span>
-          </div>
-        </div>
+        <StatsCard
+          title="My Overdue Tasks"
+          value={overdueTasks.length}
+          iconType="alert"
+          color="red"
+          badge={overdueTasks.length > 0 ? `${overdueTasks.length} tasks need attention` : 'All tasks on schedule'}
+          badgeColor={overdueTasks.length > 0 ? 'red' : 'green'}
+        />
       </div>
       
       {/* Charts and Tasks Sections - Different views based on role */}
@@ -391,13 +292,7 @@ const Dashboard = () => {
           {/* Task Status Distribution */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">My Task Status</h2>
-            <TaskStatusChart taskStats={{
-              total: userTasks.length,
-              completed: userTasks.filter(t => t.status === 'completed').length,
-              inProgress: userTasks.filter(t => t.status === 'in-progress').length,
-              notStarted: userTasks.filter(t => t.status === 'not-started').length,
-              onHold: userTasks.filter(t => t.status === 'on-hold').length
-            }} />
+            <TaskStatusChart taskStats={taskStats} />
           </div>
           
           {/* Weekly Task Completion */}
@@ -444,15 +339,7 @@ const Dashboard = () => {
                         <div className="text-sm font-medium text-gray-900">{project.name}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {project.status === 'active' ? (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Active</span>
-                        ) : project.status === 'completed' ? (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">Completed</span>
-                        ) : project.status === 'on-hold' ? (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">On Hold</span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{project.status}</span>
-                        )}
+                        <ProjectStatusBadge status={project.status} />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -481,7 +368,7 @@ const Dashboard = () => {
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">Your Tasks</h2>
             
-            {userTasks.length === 0 ? (
+            {taskStats.total === 0 ? (
               <div className="text-center py-8">
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -498,27 +385,14 @@ const Dashboard = () => {
                     <h3 className="text-sm font-medium text-red-600 mb-2">Overdue Tasks</h3>
                     <div className="space-y-3">
                       {overdueTasks.map(task => (
-                        <Link 
+                        <TaskCard
                           key={task.id}
-                          to={`/tasks/${task.id}`}
-                          className="block p-3 bg-red-50 hover:bg-red-100 rounded-lg"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{task.title}</div>
-                              <div className="text-xs text-gray-500">
-                                {task.projectName} • Due {new Date(task.dueDate).toLocaleDateString()}
-                              </div>
-                            </div>
-                            <div>
-                              {task.status === 'in-progress' ? (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">In Progress</span>
-                              ) : (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Not Started</span>
-                              )}
-                            </div>
-                          </div>
-                        </Link>
+                          task={task}
+                          variant="compact"
+                          showProject={true}
+                          showDueDate={true}
+                          className="bg-red-50 hover:bg-red-100"
+                        />
                       ))}
                     </div>
                   </div>
@@ -531,29 +405,14 @@ const Dashboard = () => {
                       .filter(task => !overdueTasks.includes(task) && task.status !== 'completed')
                       .slice(0, 5)
                       .map(task => (
-                        <Link
+                        <TaskCard
                           key={task.id}
-                          to={`/tasks/${task.id}`}
-                          className="block p-3 bg-gray-50 hover:bg-gray-100 rounded-lg"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{task.title}</div>
-                              <div className="text-xs text-gray-500">
-                                {task.projectName} • Due {new Date(task.dueDate).toLocaleDateString()}
-                              </div>
-                            </div>
-                            <div>
-                              {task.status === 'in-progress' ? (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">In Progress</span>
-                              ) : task.status === 'not-started' ? (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">Not Started</span>
-                              ) : (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">On Hold</span>
-                              )}
-                            </div>
-                          </div>
-                        </Link>
+                          task={task}
+                          variant="compact"
+                          showProject={true}
+                          showDueDate={true}
+                          className="bg-gray-50 hover:bg-gray-100"
+                        />
                       ))
                     }
                   </div>
@@ -566,23 +425,13 @@ const Dashboard = () => {
                       .filter(task => task.status === 'completed')
                       .slice(0, 3)
                       .map(task => (
-                        <Link
+                        <TaskCard
                           key={task.id}
-                          to={`/tasks/${task.id}`}
-                          className="block p-3 bg-green-50 hover:bg-green-100 rounded-lg"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{task.title}</div>
-                              <div className="text-xs text-gray-500">
-                                {task.projectName}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Completed</span>
-                            </div>
-                          </div>
-                        </Link>
+                          task={task}
+                          variant="compact"
+                          showProject={true}
+                          className="bg-green-50 hover:bg-green-100"
+                        />
                       ))
                     }
                   </div>

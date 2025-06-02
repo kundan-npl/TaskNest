@@ -26,6 +26,7 @@ import EditProject from './pages/projects/EditProject.jsx';
 import TaskDetails from './pages/tasks/TaskDetails.jsx';
 import CreateTask from './pages/tasks/CreateTask.jsx';
 import TaskCalendar from './pages/tasks/TaskCalendar.jsx';
+import MyTasks from './pages/tasks/MyTasks.jsx';
 import UserProfile from './pages/profile/UserProfile.jsx';
 import Settings from './pages/settings/Settings.jsx';
 
@@ -90,6 +91,7 @@ function App() {
           />
           
           {/* Tasks */}
+          <Route path="/tasks" element={<MyTasks />} />
           <Route path="/tasks/:id" element={<TaskDetails />} />
           <Route path="/projects/:projectId/tasks/create" element={<CreateTask />} />
           <Route path="/tasks/calendar" element={<TaskCalendar />} />
