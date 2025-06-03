@@ -11,7 +11,9 @@ const StatsCard = ({
   trend,
   actionLabel,
   actionLink,
-  className = ''
+  className = '',
+  isLive = false,
+  isLoading = false
 }) => {
   const colorClasses = {
     blue: {
@@ -54,11 +56,21 @@ const StatsCard = ({
   const colors = colorClasses[color] || colorClasses.blue;
 
   return (
-    <div className={`bg-white rounded-lg shadow-md p-6 ${className}`}>
+    <div className={`bg-white rounded-lg shadow-md p-6 relative ${className} ${isLoading ? 'animate-pulse' : ''}`}>
+      {/* Live indicator */}
+      {isLive && (
+        <div className="absolute top-2 right-2 flex items-center">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-xs text-gray-400 ml-1">Live</span>
+        </div>
+      )}
+      
       <div className="flex justify-between items-center">
         <div className="flex-1">
           <div className="text-sm font-medium text-gray-500 mb-1">{title}</div>
-          <div className="text-3xl font-bold text-gray-800">{value}</div>
+          <div className={`text-3xl font-bold text-gray-800 ${isLoading ? 'text-gray-400' : ''}`}>
+            {isLoading ? '...' : value}
+          </div>
         </div>
         {icon && (
           <div className={`rounded-full ${colors.bg} p-3`}>
@@ -89,15 +101,17 @@ const StatsCard = ({
 
       {/* Subtitle/additional info */}
       <div className="mt-4 flex justify-between items-center">
-        {subtitle && (
-          <div className={`text-xs font-medium px-2 py-1 rounded-full ${
-            trend === 'up' ? 'text-green-500 bg-green-100' :
-            trend === 'down' ? 'text-red-500 bg-red-100' :
-            `${colors.accent} ${colors.bg}`
-          }`}>
-            {subtitle}
-          </div>
-        )}
+        <div className="flex items-center space-x-2">
+          {subtitle && (
+            <div className={`text-xs font-medium px-2 py-1 rounded-full ${
+              trend === 'up' ? 'text-green-500 bg-green-100' :
+              trend === 'down' ? 'text-red-500 bg-red-100' :
+              `${colors.accent} ${colors.bg}`
+            }`}>
+              {subtitle}
+            </div>
+          )}
+        </div>
         
         {actionLink && actionLabel && (
           <Link 

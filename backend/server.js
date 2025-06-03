@@ -85,6 +85,7 @@ const taskRoutes = require('./src/routes/task.routes');
 const fileRoutes = require('./src/routes/file.routes');
 const notificationRoutes = require('./src/routes/notification.routes');
 const discussionRoutes = require('./src/routes/discussion.routes');
+const dashboardRoutes = require('./src/routes/dashboard.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -94,7 +95,7 @@ app.use(`${API_PREFIX}/tasks`, taskRoutes);
 app.use(`${API_PREFIX}/files`, fileRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/discussions`, discussionRoutes);
-app.use(`${API_PREFIX}/notifications`, notificationRoutes);
+app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {

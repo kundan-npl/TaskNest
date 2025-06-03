@@ -1,6 +1,7 @@
 const Project = require('../models/project.model');
 const User = require('../models/user.model');
 const { notifyProjectMembers, createNotification } = require('./notification.controller');
+const socketService = require('../services/socketService');
 
 /**
  * Helper function to check user's role in a project
@@ -134,6 +135,13 @@ exports.createProject = async (req, res, next) => {
     await project.populate('members.user', 'name email department jobTitle');
     await project.populate('createdBy', 'name email');
 
+    // Emit real-time update for project creation
+    socketService.broadcastTaskUpdate(project._id, {
+      type: 'project_created',
+      project: project,
+      timestamp: new Date()
+    });
+
     res.status(201).json({
       success: true,
       data: project
@@ -177,6 +185,13 @@ exports.updateProject = async (req, res, next) => {
     .populate('members.user', 'name email department jobTitle')
     .populate('createdBy', 'name email');
 
+    // Emit real-time update for project update
+    socketService.broadcastTaskUpdate(updatedProject._id, {
+      type: 'project_updated',
+      project: updatedProject,
+      timestamp: new Date()
+    });
+
     res.status(200).json({
       success: true,
       data: updatedProject
@@ -213,6 +228,13 @@ exports.deleteProject = async (req, res, next) => {
     }
 
     await project.deleteOne();
+
+    // Emit real-time update for project deletion
+    socketService.broadcastTaskUpdate(req.params.id, {
+      type: 'project_deleted',
+      projectId: req.params.id,
+      timestamp: new Date()
+    });
 
     res.status(200).json({
       success: true,

@@ -1,6 +1,7 @@
 const Task = require('../models/task.model');
 const Project = require('../models/project.model');
 const { notifyTaskAssignees, notifyProjectMembers } = require('./notification.controller');
+const socketService = require('../services/socketService');
 
 /**
  * Helper function to check user's role in a project
@@ -174,6 +175,14 @@ exports.createTask = async (req, res, next) => {
     await task.populate('assignedTo.user', 'name email department jobTitle');
     await task.populate('createdBy', 'name email');
     
+    // Emit real-time update for task creation
+    socketService.broadcastTaskUpdate(projectId, {
+      type: 'task_created',
+      task: task,
+      project: projectId,
+      timestamp: new Date()
+    });
+    
     // Send notifications to assigned users
     if (task.assignedTo && task.assignedTo.length > 0) {
       const assigneeIds = task.assignedTo.map(assignment => assignment.user._id);
@@ -244,6 +253,18 @@ exports.updateTask = async (req, res, next) => {
       }
     );
     
+    // Populate the updated task for the Socket.IO event
+    await task.populate('assignedTo.user', 'name email department jobTitle');
+    await task.populate('createdBy', 'name email');
+    
+    // Emit real-time update for task update
+    socketService.broadcastTaskUpdate(projectId, {
+      type: 'task_updated',
+      task: task,
+      project: projectId,
+      timestamp: new Date()
+    });
+    
     res.status(200).json({
       success: true,
       data: task
@@ -288,6 +309,14 @@ exports.deleteTask = async (req, res, next) => {
     }
     
     await Task.deleteOne({ _id: id });
+    
+    // Emit real-time update for task deletion
+    socketService.broadcastTaskUpdate(projectId, {
+      type: 'task_deleted',
+      taskId: id,
+      project: projectId,
+      timestamp: new Date()
+    });
     
     res.status(200).json({
       success: true,

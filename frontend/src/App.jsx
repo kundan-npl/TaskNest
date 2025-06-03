@@ -18,6 +18,7 @@ import ResetPassword from './pages/auth/ResetPassword.jsx';
 import UserManagement from './pages/users/UserManagement.jsx';
 
 // Main pages
+import Home from './pages/Home.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import ProjectsList from './pages/projects/ProjectsList.jsx';
 import ProjectDetails from './pages/projects/ProjectDetails.jsx';
@@ -58,17 +59,20 @@ function App() {
     <AuthProvider>
       <SocketProvider>
         <Routes>
+        {/* Public Home Route */}
+        <Route path="/home" element={<Home />} />
+        
         {/* Auth Routes */}
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password/:resettoken" element={<ResetPassword />} />
+          <Route path="/auth/login" element={<Login />} />
+          <Route path="/auth/register" element={<Register />} />
+          <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+          <Route path="/auth/reset-password/:resettoken" element={<ResetPassword />} />
         </Route>
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           
           {/* Projects */}
           <Route path="/projects" element={<ProjectsList />} />
@@ -93,6 +97,7 @@ function App() {
           {/* Tasks */}
           <Route path="/tasks" element={<MyTasks />} />
           <Route path="/tasks/:id" element={<TaskDetails />} />
+          <Route path="/tasks/create" element={<CreateTask />} />
           <Route path="/projects/:projectId/tasks/create" element={<CreateTask />} />
           <Route path="/tasks/calendar" element={<TaskCalendar />} />
           
@@ -113,7 +118,8 @@ function App() {
         </Route>
 
         {/* Default route redirect */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<Home />} />
+        <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
       </SocketProvider>
     </AuthProvider>

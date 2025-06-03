@@ -18,6 +18,8 @@ export const SocketProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [typingUsers, setTypingUsers] = useState({});
+  const [dashboardData, setDashboardData] = useState({});
+  const [lastDashboardUpdate, setLastDashboardUpdate] = useState(null);
   const { user, token } = useAuth();
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
@@ -153,6 +155,86 @@ export const SocketProvider = ({ children }) => {
       });
     });
 
+    // Dashboard-specific event handlers
+    newSocket.on('dashboard_update', (data) => {
+      setDashboardData(prev => ({
+        ...prev,
+        [data.type]: data.data
+      }));
+      setLastDashboardUpdate(new Date());
+      
+      // Emit custom event for dashboard components
+      window.dispatchEvent(new CustomEvent('dashboardUpdate', { 
+        detail: { type: data.type, data: data.data } 
+      }));
+    });
+
+    newSocket.on('task_stats_update', (data) => {
+      setDashboardData(prev => ({
+        ...prev,
+        taskStats: data.stats
+      }));
+      
+      window.dispatchEvent(new CustomEvent('taskStatsUpdate', { detail: data.stats }));
+    });
+
+    newSocket.on('project_stats_update', (data) => {
+      setDashboardData(prev => ({
+        ...prev,
+        projectStats: data.stats
+      }));
+      
+      window.dispatchEvent(new CustomEvent('projectStatsUpdate', { detail: data }));
+    });
+
+    newSocket.on('system_stats_update', (data) => {
+      setDashboardData(prev => ({
+        ...prev,
+        systemStats: data.stats
+      }));
+      
+      window.dispatchEvent(new CustomEvent('systemStatsUpdate', { detail: data.stats }));
+    });
+
+    newSocket.on('activity_update', (data) => {
+      setDashboardData(prev => ({
+        ...prev,
+        activityFeed: prev.activityFeed ? [data.activity, ...prev.activityFeed.slice(0, 19)] : [data.activity]
+      }));
+      
+      window.dispatchEvent(new CustomEvent('activityUpdate', { detail: data.activity }));
+    });
+
+    newSocket.on('performance_update', (data) => {
+      setDashboardData(prev => ({
+        ...prev,
+        performanceMetrics: data.metrics
+      }));
+      
+      window.dispatchEvent(new CustomEvent('performanceUpdate', { detail: data.metrics }));
+    });
+
+    newSocket.on('dashboard_refresh_requested', () => {
+      window.dispatchEvent(new CustomEvent('dashboardRefreshRequested'));
+    });
+
+    // Task and project real-time events
+    newSocket.on('task_status_changed', (data) => {
+      window.dispatchEvent(new CustomEvent('task_status_changed', { detail: data }));
+    });
+
+    newSocket.on('new_task_comment', (data) => {
+      window.dispatchEvent(new CustomEvent('new_task_comment', { detail: data }));
+    });
+
+    newSocket.on('member_update', (data) => {
+      window.dispatchEvent(new CustomEvent('member_update', { detail: data }));
+    });
+
+    newSocket.on('project_notification', (data) => {
+      window.dispatchEvent(new CustomEvent('project_notification', { detail: data }));
+    });
+
     setSocket(newSocket);
   };
 
@@ -209,6 +291,34 @@ export const SocketProvider = ({ children }) => {
     }
   };
 
+  // Dashboard-specific methods
+  const joinDashboard = () => {
+    if (socket && isConnected) {
+      socket.emit('join_dashboard');
+    }
+  };
+
+  const leaveDashboard = () => {
+    if (socket && isConnected) {
+      socket.emit('leave_dashboard');
+    }
+  };
+
+  const refreshDashboard = () => {
+    if (socket && isConnected) {
+      socket.emit('refresh_dashboard');
+    }
+  };
+
+  const trackDashboardActivity = (activity) => {
+    if (socket && isConnected) {
+      socket.emit('dashboard_activity', {
+        ...activity,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
   const markNotificationAsRead = (notificationId) => {
     setNotifications(prev => 
       prev.map(notif => 
@@ -236,6 +346,8 @@ export const SocketProvider = ({ children }) => {
     onlineUsers,
     notifications,
     typingUsers,
+    dashboardData,
+    lastDashboardUpdate,
     joinProject,
     leaveProject,
     sendTaskUpdate,
@@ -243,6 +355,10 @@ export const SocketProvider = ({ children }) => {
     sendProjectUpdate,
     startTyping,
     stopTyping,
+    joinDashboard,
+    leaveDashboard,
+    refreshDashboard,
+    trackDashboardActivity,
     markNotificationAsRead,
     clearNotifications
   };

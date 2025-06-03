@@ -110,6 +110,9 @@ class SocketService {
         this.updateUserPresence(socket.userId, status);
       });
 
+      // Setup dashboard-specific events
+      this.setupDashboardEvents(socket);
+
       // Handle disconnection
       socket.on('disconnect', () => {
         console.log(`User ${socket.user.name} disconnected`);
@@ -211,6 +214,102 @@ class SocketService {
       ...announcement,
       timestamp: new Date()
     });
+  }
+
+  // Dashboard-specific real-time events
+  broadcastDashboardUpdate(userId, updateType, data) {
+    // Send to user's personal room
+    this.io.to(`user_${userId}`).emit('dashboard_update', {
+      type: updateType,
+      data,
+      timestamp: new Date()
+    });
+  }
+
+  // Broadcast project statistics update to project members
+  broadcastProjectStatsUpdate(projectId, stats) {
+    this.io.to(`project_${projectId}`).emit('project_stats_update', {
+      projectId,
+      stats,
+      timestamp: new Date()
+    });
+  }
+
+  // Broadcast task statistics update
+  broadcastTaskStatsUpdate(userId, stats) {
+    this.io.to(`user_${userId}`).emit('task_stats_update', {
+      stats,
+      timestamp: new Date()
+    });
+  }
+
+  // Broadcast system-wide statistics (admin dashboard)
+  broadcastSystemStats(stats) {
+    // Send to all admin users
+    this.io.emit('system_stats_update', {
+      stats,
+      timestamp: new Date()
+    });
+  }
+
+  // Send real-time activity feed update
+  broadcastActivityUpdate(userId, activity) {
+    this.io.to(`user_${userId}`).emit('activity_update', {
+      activity,
+      timestamp: new Date()
+    });
+  }
+
+  // Broadcast performance metrics update
+  broadcastPerformanceUpdate(userId, metrics) {
+    this.io.to(`user_${userId}`).emit('performance_update', {
+      metrics,
+      timestamp: new Date()
+    });
+  }
+
+  // Get dashboard real-time data for a user
+  getDashboardRealtimeData(userId) {
+    return {
+      isOnline: this.connectedUsers.has(userId.toString()),
+      lastSeen: new Date(),
+      onlineUsers: Array.from(this.connectedUsers.keys()).length
+    };
+  }
+
+  // Dashboard event handlers for socket connections
+  setupDashboardEvents(socket) {
+    // Join dashboard room for real-time updates
+    socket.on('join_dashboard', () => {
+      socket.join(`dashboard_${socket.userId}`);
+      console.log(`User ${socket.user.name} joined dashboard room`);
+    });
+
+    // Leave dashboard room
+    socket.on('leave_dashboard', () => {
+      socket.leave(`dashboard_${socket.userId}`);
+      console.log(`User ${socket.user.name} left dashboard room`);
+    });
+
+    // Request dashboard refresh
+    socket.on('refresh_dashboard', () => {
+      // Emit refresh event to trigger frontend data fetch
+      socket.emit('dashboard_refresh_requested', {
+        timestamp: new Date()
+      });
+    });
+
+    // Handle dashboard activity tracking
+    socket.on('dashboard_activity', (activity) => {
+      // Track user activity for analytics
+      this.trackDashboardActivity(socket.userId, activity);
+    });
+  }
+
+  // Track dashboard activity for analytics
+  trackDashboardActivity(userId, activity) {
+    // This could store activity in database for analytics
+    console.log(`Dashboard activity from user ${userId}:`, activity);
   }
 }
 

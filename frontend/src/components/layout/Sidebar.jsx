@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const Sidebar = ({ open, collapsed, toggleSidebar, toggleCollapse }) => {
@@ -9,7 +9,7 @@ const Sidebar = ({ open, collapsed, toggleSidebar, toggleCollapse }) => {
   const navigation = [
     {
       name: 'Dashboard',
-      path: '/',
+      path: '/dashboard',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -112,7 +112,7 @@ const Sidebar = ({ open, collapsed, toggleSidebar, toggleCollapse }) => {
         <div className={`h-16 flex items-center bg-blue-900 shadow-lg transition-all duration-300 ${
           collapsed ? 'justify-center px-2' : 'justify-between px-4'
         }`}>
-          <div className="flex items-center">
+          <Link to="/home" className="flex items-center hover:opacity-80 transition-opacity duration-200">
             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-blue-800" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
@@ -121,7 +121,7 @@ const Sidebar = ({ open, collapsed, toggleSidebar, toggleCollapse }) => {
             {!collapsed && (
               <span className="font-bold text-xl text-white ml-3">TaskNest</span>
             )}
-          </div>
+          </Link>
           
           {/* Collapse toggle button - Hidden on mobile */}
           <button

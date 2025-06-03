@@ -381,15 +381,26 @@ const TaskCalendar = () => {
             </div>
             
             <div className="mt-6 flex justify-end">
-              <Link 
-                to="/tasks/create" 
-                className="btn-primary flex items-center"
-              >
-                <svg className="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Task
-              </Link>
+              <div className="flex space-x-2">
+                <Link 
+                  to={`/tasks/create?date=${selectedDate.toISOString().split('T')[0]}`}
+                  className="btn-secondary flex items-center"
+                >
+                  <svg className="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Task for This Date
+                </Link>
+                <Link 
+                  to="/tasks/create" 
+                  className="btn-primary flex items-center"
+                >
+                  <svg className="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Task
+                </Link>
+              </div>
             </div>
           </div>
         </div>

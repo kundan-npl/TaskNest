@@ -3,8 +3,13 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext.jsx';
 import taskService from '../../services/taskService';
-import TaskCard from '../../components/common/TaskCard.jsx';
-import TaskStatusBadge from '../../components/common/TaskStatusBadge.jsx';
+import TaskStatsDashboard from '../../components/tasks/TaskStatsDashboard.jsx';
+import TaskFilters from '../../components/tasks/TaskFilters.jsx';
+import TaskViewControls from '../../components/tasks/TaskViewControls.jsx';
+import TaskList from '../../components/tasks/TaskList.jsx';
+import TaskBoard from '../../components/tasks/TaskBoard.jsx';
+import TaskEmptyState from '../../components/tasks/TaskEmptyState.jsx';
+import { CalendarIcon, PlusIcon } from '@heroicons/react/24/outline';
 
 const MyTasks = () => {
   const { currentUser } = useAuth();
@@ -281,8 +286,20 @@ const MyTasks = () => {
     setFilters(prev => ({ ...prev, [filterName]: value }));
   };
 
+  // Check if filters are active
+  const hasActiveFilters = useMemo(() => {
+    return Object.entries(filters).some(([key, value]) => 
+      key !== 'assignee' && value !== ''
+    );
+  }, [filters]);
+
   // Handle bulk operations
   const handleBulkStatusUpdate = async (newStatus) => {
+    if (newStatus === 'clear') {
+      setSelectedTasks(new Set());
+      return;
+    }
+
     if (selectedTasks.size === 0) {
       toast.warning('Please select tasks to update');
       return;
@@ -297,7 +314,7 @@ const MyTasks = () => {
       ));
       
       setSelectedTasks(new Set());
-      toast.success(`Updated ${selectedTasks.size} tasks to ${newStatus}`);
+      toast.success(`Updated ${selectedTasks.size} tasks to ${newStatus.replace('-', ' ')}`);
     } catch (error) {
       toast.error('Failed to update tasks');
     }
@@ -337,412 +354,148 @@ const MyTasks = () => {
     });
   };
 
+  // Loading state with professional design
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex justify-center items-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary-200 border-t-primary-600 mx-auto mb-4"></div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Loading your tasks...</h3>
+              <p className="text-gray-600">Please wait while we fetch your task data</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  // Error state with professional design
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-6">
-        <div className="text-center py-20">
-          <div className="text-red-600 text-xl mb-4">Error loading tasks</div>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button onClick={fetchTasks} className="btn-primary">
-            Try Again
-          </button>
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center max-w-md">
+              <div className="bg-red-100 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Unable to load tasks</h3>
+              <p className="text-gray-600 mb-6">{error}</p>
+              <button onClick={fetchTasks} className="btn-primary">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Try Again
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">My Tasks</h1>
-            <p className="text-gray-600 mt-1">
-              Manage and track your assigned tasks across all projects
-            </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-6 space-y-6">
+        {/* Header Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">My Tasks</h1>
+              <p className="text-gray-600">
+                Manage and track your assigned tasks across all projects
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap gap-3">
+              <Link 
+                to="/tasks/calendar" 
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+              >
+                <CalendarIcon className="w-4 h-4 mr-2" />
+                Calendar View
+              </Link>
+              <Link 
+                to="/projects" 
+                className="inline-flex items-center px-4 py-2 bg-primary-600 border border-transparent rounded-lg text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+              >
+                <PlusIcon className="w-4 h-4 mr-2" />
+                New Task
+              </Link>
+            </div>
           </div>
-          
-          <div className="flex gap-2">
-            <Link to="/tasks/calendar" className="btn-secondary">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Calendar View
-            </Link>
-            <Link to="/projects" className="btn-primary">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              New Task
-            </Link>
-          </div>
         </div>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-2xl font-bold text-gray-800">{taskStats.total}</div>
-          <div className="text-sm text-gray-600">Total Tasks</div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-2xl font-bold text-blue-600">{taskStats.inProgress}</div>
-          <div className="text-sm text-gray-600">In Progress</div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-2xl font-bold text-green-600">{taskStats.completed}</div>
-          <div className="text-sm text-gray-600">Completed</div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-2xl font-bold text-gray-600">{taskStats.notStarted}</div>
-          <div className="text-sm text-gray-600">Not Started</div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-2xl font-bold text-yellow-600">{taskStats.onHold}</div>
-          <div className="text-sm text-gray-600">On Hold</div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-2xl font-bold text-red-600">{taskStats.overdue}</div>
-          <div className="text-sm text-gray-600">Overdue</div>
-        </div>
-      </div>
+        {/* Statistics Dashboard */}
+        <TaskStatsDashboard stats={taskStats} />
 
-      {/* Filters and Controls */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
-          <div className="flex flex-wrap gap-3">
-            {/* Search */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search tasks..."
-                value={filters.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
-                className="form-input pl-10 w-64"
+        {/* Filters Section */}
+        <TaskFilters
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          projects={projects}
+          onResetFilters={resetFilters}
+          hasActiveFilters={hasActiveFilters}
+          showCompleted={showCompleted}
+          onToggleCompleted={setShowCompleted}
+        />
+
+        {/* View Controls and Bulk Actions */}
+        <TaskViewControls
+          view={view}
+          onViewChange={setView}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
+          selectedTasks={selectedTasks}
+          onBulkAction={handleBulkStatusUpdate}
+          onSelectAll={handleSelectAll}
+          filteredTasksCount={filteredAndSortedTasks.length}
+          allSelected={selectedTasks.size === filteredAndSortedTasks.length}
+        />
+
+        {/* Task Content */}
+        {filteredAndSortedTasks.length === 0 ? (
+          <TaskEmptyState
+            hasNoTasks={tasks.length === 0}
+            onResetFilters={resetFilters}
+          />
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {view === 'list' && (
+              <TaskList
+                tasks={filteredAndSortedTasks}
+                selectedTasks={selectedTasks}
+                onTaskSelection={handleTaskSelection}
               />
-              <svg className="absolute left-3 top-3 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
+            )}
 
-            {/* Status Filter */}
-            <select
-              value={filters.status}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="form-select"
-            >
-              <option value="">All Status</option>
-              <option value="not-started">Not Started</option>
-              <option value="in-progress">In Progress</option>
-              <option value="on-hold">On Hold</option>
-              <option value="completed">Completed</option>
-            </select>
+            {view === 'board' && (
+              <div className="p-6">
+                <TaskBoard
+                  tasksByStatus={tasksByStatus}
+                  selectedTasks={selectedTasks}
+                  onTaskSelection={handleTaskSelection}
+                />
+              </div>
+            )}
 
-            {/* Priority Filter */}
-            <select
-              value={filters.priority}
-              onChange={(e) => handleFilterChange('priority', e.target.value)}
-              className="form-select"
-            >
-              <option value="">All Priority</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-
-            {/* Project Filter */}
-            <select
-              value={filters.project}
-              onChange={(e) => handleFilterChange('project', e.target.value)}
-              className="form-select"
-            >
-              <option value="">All Projects</option>
-              {projects.map(project => (
-                <option key={project.id} value={project.id}>{project.name}</option>
-              ))}
-            </select>
-
-            {/* Due Date Filter */}
-            <select
-              value={filters.dueDate}
-              onChange={(e) => handleFilterChange('dueDate', e.target.value)}
-              className="form-select"
-            >
-              <option value="">Any Due Date</option>
-              <option value="overdue">Overdue</option>
-              <option value="today">Due Today</option>
-              <option value="week">Due This Week</option>
-              <option value="month">Due This Month</option>
-            </select>
-
-            {/* Reset Filters */}
-            <button onClick={resetFilters} className="btn-secondary">
-              Reset Filters
-            </button>
-          </div>
-
-          {/* View and Sort Controls */}
-          <div className="flex items-center gap-3">
-            {/* Show Completed Toggle */}
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={showCompleted}
-                onChange={(e) => setShowCompleted(e.target.checked)}
-                className="form-checkbox h-4 w-4 text-primary-600"
+            {view === 'compact' && (
+              <TaskList
+                tasks={filteredAndSortedTasks}
+                selectedTasks={selectedTasks}
+                onTaskSelection={handleTaskSelection}
+                variant="compact"
               />
-              <span className="ml-2 text-sm text-gray-700">Show Completed</span>
-            </label>
-
-            {/* Sort Controls */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="form-select text-sm"
-            >
-              <option value="dueDate">Sort by Due Date</option>
-              <option value="priority">Sort by Priority</option>
-              <option value="created">Sort by Created</option>
-              <option value="title">Sort by Title</option>
-              <option value="project">Sort by Project</option>
-            </select>
-
-            <button
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="p-2 text-gray-600 hover:text-gray-800"
-              title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-            >
-              <svg className={`w-4 h-4 transform ${sortOrder === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-              </svg>
-            </button>
-
-            {/* View Toggle */}
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setView('list')}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                  view === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
-                }`}
-              >
-                List
-              </button>
-              <button
-                onClick={() => setView('board')}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                  view === 'board' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
-                }`}
-              >
-                Board
-              </button>
-              <button
-                onClick={() => setView('compact')}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                  view === 'compact' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
-                }`}
-              >
-                Compact
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Bulk Actions */}
-        {selectedTasks.size > 0 && (
-          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-            <span className="text-sm text-blue-800">
-              {selectedTasks.size} task{selectedTasks.size > 1 ? 's' : ''} selected
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleBulkStatusUpdate('in-progress')}
-                className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Mark In Progress
-              </button>
-              <button
-                onClick={() => handleBulkStatusUpdate('completed')}
-                className="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-              >
-                Mark Completed
-              </button>
-              <button
-                onClick={() => handleBulkStatusUpdate('on-hold')}
-                className="text-sm px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700"
-              >
-                Put On Hold
-              </button>
-              <button
-                onClick={() => setSelectedTasks(new Set())}
-                className="text-sm px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Clear Selection
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>
-
-      {/* Task Content */}
-      {filteredAndSortedTasks.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-          </svg>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No tasks found</h3>
-          <p className="text-gray-600 mb-4">
-            {tasks.length === 0 
-              ? "You don't have any tasks assigned yet." 
-              : "No tasks match your current filters."
-            }
-          </p>
-          {tasks.length === 0 ? (
-            <Link to="/projects" className="btn-primary">
-              Browse Projects
-            </Link>
-          ) : (
-            <button onClick={resetFilters} className="btn-secondary">
-              Clear Filters
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* List View */}
-          {view === 'list' && (
-            <div className="bg-white rounded-lg shadow">
-              <div className="p-4 border-b">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium text-gray-900">
-                    Tasks ({filteredAndSortedTasks.length})
-                  </h3>
-                  <button
-                    onClick={handleSelectAll}
-                    className="text-sm text-primary-600 hover:text-primary-700"
-                  >
-                    {selectedTasks.size === filteredAndSortedTasks.length ? 'Deselect All' : 'Select All'}
-                  </button>
-                </div>
-              </div>
-              <div className="divide-y">
-                {filteredAndSortedTasks.map(task => (
-                  <div key={task.id} className="p-4 hover:bg-gray-50">
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedTasks.has(task.id)}
-                        onChange={() => handleTaskSelection(task.id)}
-                        className="mt-1 h-4 w-4 text-primary-600 form-checkbox"
-                      />
-                      <div className="flex-1">
-                        <TaskCard
-                          task={task}
-                          variant="detailed"
-                          showProject={true}
-                          showDueDate={true}
-                          showAssignee={false}
-                          showSubtasks={true}
-                          className="border-0 shadow-none p-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Board View */}
-          {view === 'board' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {Object.entries(tasksByStatus).map(([status, statusTasks]) => (
-                <div key={status} className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium text-gray-900 capitalize flex items-center gap-2">
-                      <TaskStatusBadge status={status} />
-                      {status.replace('-', ' ')} ({statusTasks.length})
-                    </h3>
-                  </div>
-                  <div className="space-y-3">
-                    {statusTasks.map(task => (
-                      <div key={task.id} className="relative">
-                        <input
-                          type="checkbox"
-                          checked={selectedTasks.has(task.id)}
-                          onChange={() => handleTaskSelection(task.id)}
-                          className="absolute top-2 right-2 h-4 w-4 text-primary-600 form-checkbox z-10"
-                        />
-                        <TaskCard
-                          task={task}
-                          variant="card"
-                          showProject={true}
-                          showDueDate={true}
-                          showAssignee={false}
-                          className="hover:shadow-md transition-shadow cursor-pointer"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Compact View */}
-          {view === 'compact' && (
-            <div className="bg-white rounded-lg shadow">
-              <div className="p-4 border-b">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium text-gray-900">
-                    Tasks ({filteredAndSortedTasks.length})
-                  </h3>
-                  <button
-                    onClick={handleSelectAll}
-                    className="text-sm text-primary-600 hover:text-primary-700"
-                  >
-                    {selectedTasks.size === filteredAndSortedTasks.length ? 'Deselect All' : 'Select All'}
-                  </button>
-                </div>
-              </div>
-              <div className="divide-y">
-                {filteredAndSortedTasks.map(task => (
-                  <div key={task.id} className="p-3 hover:bg-gray-50">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedTasks.has(task.id)}
-                        onChange={() => handleTaskSelection(task.id)}
-                        className="h-4 w-4 text-primary-600 form-checkbox"
-                      />
-                      <div className="flex-1">
-                        <TaskCard
-                          task={task}
-                          variant="compact"
-                          showProject={true}
-                          showDueDate={true}
-                          showAssignee={false}
-                          className="border-0 shadow-none p-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 };
