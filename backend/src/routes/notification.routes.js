@@ -6,7 +6,13 @@ const {
   markAsRead,
   markAllAsRead,
   deleteNotification,
-  deleteReadNotifications
+  deleteReadNotifications,
+  getProjectNotifications,
+  updateProjectNotificationPreferences,
+  getProjectNotificationPreferences,
+  markProjectNotificationsAsRead,
+  getProjectNotificationStats,
+  createProjectNotification
 } = require('../controllers/notification.controller');
 const { protect } = require('../middleware/auth/auth');
 
@@ -25,5 +31,13 @@ router.route('/:id')
 
 // Specific action route
 router.put('/:id/read', markAsRead);
+
+// Project-specific notification routes (to be used as nested routes)
+router.get('/project/:projectId', getProjectNotifications);
+router.post('/project/:projectId', createProjectNotification);
+router.get('/project/:projectId/stats', getProjectNotificationStats);
+router.get('/project/:projectId/preferences', getProjectNotificationPreferences);
+router.put('/project/:projectId/preferences', updateProjectNotificationPreferences);
+router.put('/project/:projectId/mark-read', markProjectNotificationsAsRead);
 
 module.exports = router;

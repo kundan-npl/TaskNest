@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { formatDate, getProgressPercentage, getTimeLeft } from '../../../utils/projectHelpers';
+import projectService from '../../../services/projectService';
+import { useSocket } from '../../../context/SocketContext';
 
 const ProjectOverviewWidget = ({ 
   project, 
@@ -10,10 +13,87 @@ const ProjectOverviewWidget = ({
   onUpdate,
   className = '' 
 }) => {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [projectData, setProjectData] = useState(project);
+
+  const { socket, isConnected } = useSocket();
+
   if (!project) return null;
 
-  const progress = project.progress || getProgressPercentage(tasks);
-  const timeLeft = getTimeLeft(project.deadline);
+  // Fetch analytics data
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (!project._id && !project.id) return;
+      
+      try {
+        setLoading(true);
+        const analyticsData = await projectService.getProjectAnalytics(project._id || project.id);
+        setAnalytics(analyticsData);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch project analytics:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalytics();
+  }, [project._id, project.id]);
+
+  // Real-time project updates via Socket.IO
+  useEffect(() => {
+    const handleProjectUpdate = (event) => {
+      const { project: updatedProject, action, projectId } = event.detail;
+      
+      // Only update if this is for the current project
+      if (projectId !== (project?._id || project?.id)) return;
+
+      switch (action) {
+        case 'updated':
+          setProjectData(prev => ({ ...prev, ...updatedProject }));
+          if (onUpdate) onUpdate(updatedProject);
+          
+          // Refetch analytics for updated data
+          projectService.getProjectAnalytics(projectId)
+            .then(analyticsData => setAnalytics(analyticsData))
+            .catch(err => console.error('Failed to fetch updated analytics:', err));
+          break;
+        case 'status_changed':
+          setProjectData(prev => ({ ...prev, status: updatedProject.status }));
+          toast.success(`Project status changed to ${updatedProject.status}`);
+          break;
+        case 'member_added':
+          setProjectData(prev => ({ 
+            ...prev, 
+            members: [...(prev.members || []), updatedProject.newMember] 
+          }));
+          break;
+        case 'member_removed':
+          setProjectData(prev => ({ 
+            ...prev, 
+            members: (prev.members || []).filter(m => m._id !== updatedProject.removedMemberId) 
+          }));
+          break;
+        default:
+          break;
+      }
+    };
+
+    // Listen for project updates via custom events from SocketContext
+    window.addEventListener('projectUpdated', handleProjectUpdate);
+
+    return () => {
+      window.removeEventListener('projectUpdated', handleProjectUpdate);
+    };
+  }, [project?._id, project?.id, onUpdate]);
+
+  // Use local project data that can be updated in real-time
+  const currentProject = projectData || project;
+  const progress = analytics?.completionPercentage || currentProject.progress || getProgressPercentage(tasks);
+  const timeLeft = getTimeLeft(currentProject.deadline);
 
   return (
     <div className={`widget-card ${className}`}>
@@ -91,11 +171,71 @@ const ProjectOverviewWidget = ({
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  analytics?.projectHealth >= 80 ? 'bg-green-600' :
+                  analytics?.projectHealth >= 60 ? 'bg-yellow-600' :
+                  'bg-red-600'
+                }`}
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
+            {analytics && (
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Project Health: {analytics.projectHealth}% • Time Progress: {analytics.timeProgress}%
+              </div>
+            )}
           </div>
+
+          {/* Analytics Grid */}
+          {analytics && !loading && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {analytics.totalTasks}
+                </div>
+                <div className="text-sm text-blue-600 dark:text-blue-400">Total Tasks</div>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {analytics.completedTasks}
+                </div>
+                <div className="text-sm text-green-600 dark:text-green-400">Completed</div>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3">
+                <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                  {analytics.inProgressTasks}
+                </div>
+                <div className="text-sm text-yellow-600 dark:text-yellow-400">In Progress</div>
+              </div>
+              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {analytics.overdueTasks}
+                </div>
+                <div className="text-sm text-red-600 dark:text-red-400">Overdue</div>
+              </div>
+            </div>
+          )}
+
+          {/* Loading state for analytics */}
+          {loading && (
+            <div className="grid grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse">
+                  <div className="h-6 bg-gray-300 dark:bg-gray-600 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded"></div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+              <div className="text-sm text-red-600 dark:text-red-400">
+                Failed to load analytics: {error}
+              </div>
+            </div>
+          )}
 
           {/* Timeline */}
           <div className="grid grid-cols-2 gap-4 text-sm">

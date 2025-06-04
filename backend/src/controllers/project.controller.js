@@ -359,16 +359,15 @@ exports.addMember = async (req, res, next) => {
 };
 
 /**
- * @desc    Update member role
- * @route   PUT /api/v1/projects/:id/members/:memberId
+ * @desc    Get project analytics and metrics for overview widget
+ * @route   GET /api/v1/projects/:id/analytics
  * @access  Private
  */
-exports.updateMemberRole = async (req, res, next) => {
+exports.getProjectAnalytics = async (req, res, next) => {
   try {
-    const { role } = req.body;
-    const { id: projectId, memberId } = req.params;
-
-    const project = await Project.findById(projectId);
+    const project = await Project.findById(req.params.id)
+      .populate('members.user', 'name email')
+      .populate('createdBy', 'name email');
 
     if (!project) {
       return res.status(404).json({
@@ -377,89 +376,96 @@ exports.updateMemberRole = async (req, res, next) => {
       });
     }
 
-    // Check if user has canManageMembers permission
+    // Check if user is a member
     const userMember = getUserProjectRole(project, req.user.id);
-    
-    if (!userMember || !userMember.permissions.canManageMembers) {
+    if (!userMember) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied. You do not have permission to manage members.'
+        error: 'Not authorized to view this project'
       });
     }
 
-    // Find the member to update
-    const memberIndex = project.members.findIndex(member => member.user.toString() === memberId);
-    
-    if (memberIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'Member not found in this project'
-      });
-    }
+    // Get tasks for calculations
+    const Task = require('../models/task.model');
+    const tasks = await Task.find({ project: project._id });
 
-    // Validate role
-    const validRoles = ['supervisor', 'team-lead', 'team-member'];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid role. Must be supervisor, team-lead, or team-member'
-      });
-    }
-
-    // Prevent self-demotion from supervisor if only supervisor
-    const supervisors = project.members.filter(member => member.role === 'supervisor');
-    if (req.user.id === memberId && userMember.role === 'supervisor' && role !== 'supervisor' && supervisors.length === 1) {
-      return res.status(400).json({
-        success: false,
-        error: 'Cannot demote yourself as the only supervisor'
-      });
-    }
-
-    // Set permissions based on role
-    const rolePermissions = {
-      'supervisor': { 
-        canAssignTasks: true,
-        canEditProject: true, 
-        canManageMembers: true, 
-        canDeleteProject: true, 
-        canViewReports: true 
-      },
-      'team-lead': { 
-        canAssignTasks: true,
-        canEditProject: false, 
-        canManageMembers: false, 
-        canDeleteProject: false, 
-        canViewReports: true 
-      },
-      'team-member': { 
-        canAssignTasks: false,
-        canEditProject: false, 
-        canManageMembers: false, 
-        canDeleteProject: false, 
-        canViewReports: true 
-      }
+    // Calculate analytics
+    const analytics = {
+      totalTasks: tasks.length,
+      completedTasks: tasks.filter(t => t.status === 'completed').length,
+      inProgressTasks: tasks.filter(t => t.status === 'in-progress').length,
+      notStartedTasks: tasks.filter(t => t.status === 'not-started').length,
+      overdueTasks: tasks.filter(t => t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed').length,
+      highPriorityTasks: tasks.filter(t => t.priority === 'high' || t.priority === 'urgent').length,
+      completionPercentage: tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0,
+      activeMembers: project.members.length,
+      recentActivity: tasks.filter(t => {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        return new Date(t.updatedAt) > oneDayAgo;
+      }).length,
+      projectHealth: calculateProjectHealth(project, tasks),
+      timeProgress: calculateTimeProgress(project),
+      memberContributions: calculateMemberContributions(tasks, project.members)
     };
 
-    // Update member role and permissions
-    project.members[memberIndex].role = role;
-    project.members[memberIndex].permissions = rolePermissions[role];
+    res.status(200).json({
+      success: true,
+      data: analytics
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update project status and settings
+ * @route   PUT /api/v1/projects/:id/status
+ * @access  Private (Supervisor/Team Lead)
+ */
+exports.updateProjectStatus = async (req, res, next) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember || !userMember.permissions.canEditProject) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update project status'
+      });
+    }
+
+    const { status, priorityLevel, deadline, settings } = req.body;
+
+    if (status) project.status = status;
+    if (priorityLevel) project.priorityLevel = priorityLevel;
+    if (deadline) project.deadline = deadline;
+    if (settings) project.settings = { ...project.settings, ...settings };
 
     await project.save();
-    await project.populate('members.user', 'name email department jobTitle');
+    await project.populate('members.user', 'name email');
 
-    // Send notification about role change
-    try {
-      await createNotification({
-        user: memberId,
-        type: 'role_updated',
-        title: 'Role Updated',
-        message: `Your role in project "${project.name}" has been updated to ${role}`,
-        relatedProject: projectId
-      });
-    } catch (notificationError) {
-      console.error('Failed to send notification:', notificationError);
-      // Don't fail the request if notification fails
-    }
+    // Emit real-time update
+    socketService.emitToProject(project._id, 'project:status_updated', {
+      projectId: project._id,
+      status: project.status,
+      updatedBy: req.user.name,
+      timestamp: new Date()
+    });
+
+    // Create notification for members
+    await createNotification({
+      type: 'project_updated',
+      message: `Project "${project.title}" status updated to ${status}`,
+      users: project.members.map(m => m.user._id || m.user),
+      data: { projectId: project._id, status }
+    });
 
     res.status(200).json({
       success: true,
@@ -471,9 +477,305 @@ exports.updateMemberRole = async (req, res, next) => {
 };
 
 /**
+ * @desc    Invite member to project
+ * @route   POST /api/v1/projects/:id/invite
+ * @access  Private (Supervisor/Team Lead with permission)
+ */
+exports.inviteMember = async (req, res, next) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember || !userMember.permissions.canManageMembers) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to invite members'
+      });
+    }
+
+    const { email, role = 'teamMember' } = req.body;
+
+    // Find user by email
+    const User = require('../models/user.model');
+    const userToInvite = await User.findOne({ email: email.toLowerCase() });
+
+    if (!userToInvite) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found with this email'
+      });
+    }
+
+    // Check if user is already a member
+    const existingMember = project.members.find(m => 
+      (m.user._id || m.user).toString() === userToInvite._id.toString()
+    );
+
+    if (existingMember) {
+      return res.status(400).json({
+        success: false,
+        error: 'User is already a member of this project'
+      });
+    }
+
+    // Add member with role-based permissions
+    const newMember = {
+      user: userToInvite._id,
+      role: role,
+      joinedAt: new Date()
+    };
+
+    project.members.push(newMember);
+    await project.save();
+    await project.populate('members.user', 'name email department jobTitle');
+
+    // Emit real-time update
+    socketService.emitToProject(project._id, 'project:member_added', {
+      projectId: project._id,
+      member: newMember,
+      addedBy: req.user.name,
+      timestamp: new Date()
+    });
+
+    // Create notification
+    await createNotification({
+      type: 'project_invitation',
+      message: `You have been added to project "${project.title}"`,
+      users: [userToInvite._id],
+      data: { projectId: project._id, role }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: project
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update member role
+ * @route   PUT /api/v1/projects/:id/members/:memberId/role
+ * @access  Private (Supervisor only)
+ */
+exports.updateMemberRole = async (req, res, next) => {
+  try {
+    const { id: projectId, memberId } = req.params;
+    const { role } = req.body;
+
+    const project = await Project.findById(projectId);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember || userMember.role !== 'supervisor') {
+      return res.status(403).json({
+        success: false,
+        error: 'Only supervisors can change member roles'
+      });
+    }
+
+    const memberToUpdate = project.members.find(m => 
+      (m.user._id || m.user).toString() === memberId
+    );
+
+    if (!memberToUpdate) {
+      return res.status(404).json({
+        success: false,
+        error: 'Member not found in project'
+      });
+    }
+
+    memberToUpdate.role = role;
+    await project.save();
+    await project.populate('members.user', 'name email department jobTitle');
+
+    // Emit real-time update
+    socketService.emitToProject(project._id, 'project:member_role_updated', {
+      projectId: project._id,
+      memberId: memberId,
+      newRole: role,
+      updatedBy: req.user.name,
+      timestamp: new Date()
+    });
+
+    res.status(200).json({
+      success: true,
+      data: project
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get project activity feed
+ * @route   GET /api/v1/projects/:id/activity
+ * @access  Private
+ */
+exports.getProjectActivity = async (req, res, next) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view this project'
+      });
+    }
+
+    const { limit = 20, page = 1 } = req.query;
+
+    // Get activities from tasks, discussions, and notifications
+    const Task = require('../models/task.model');
+    const Discussion = require('../models/discussion.model');
+    const Notification = require('../models/notification.model');
+
+    const [tasks, discussions, notifications] = await Promise.all([
+      Task.find({ project: project._id })
+        .populate('assignedTo', 'name')
+        .populate('createdBy', 'name')
+        .sort({ updatedAt: -1 })
+        .limit(10),
+      Discussion.find({ project: project._id })
+        .populate('author', 'name')
+        .sort({ updatedAt: -1 })
+        .limit(10),
+      Notification.find({
+        'data.projectId': project._id,
+        users: req.user.id
+      })
+        .populate('createdBy', 'name')
+        .sort({ createdAt: -1 })
+        .limit(10)
+    ]);
+
+    // Combine and format activities
+    const activities = [
+      ...tasks.map(task => ({
+        type: 'task',
+        id: task._id,
+        title: task.title,
+        action: 'updated',
+        user: task.assignedTo || task.createdBy,
+        timestamp: task.updatedAt,
+        data: { status: task.status, priority: task.priority }
+      })),
+      ...discussions.map(discussion => ({
+        type: 'discussion',
+        id: discussion._id,
+        title: discussion.title,
+        action: 'posted',
+        user: discussion.author,
+        timestamp: discussion.updatedAt,
+        data: { content: discussion.content.substring(0, 100) }
+      })),
+      ...notifications.map(notification => ({
+        type: 'notification',
+        id: notification._id,
+        title: notification.message,
+        action: 'created',
+        user: notification.createdBy,
+        timestamp: notification.createdAt,
+        data: notification.data
+      }))
+    ];
+
+    // Sort by timestamp and paginate
+    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const startIndex = (page - 1) * limit;
+    const paginatedActivities = activities.slice(startIndex, startIndex + parseInt(limit));
+
+    res.status(200).json({
+      success: true,
+      data: paginatedActivities,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: activities.length,
+        pages: Math.ceil(activities.length / limit)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Helper functions
+function calculateProjectHealth(project, tasks) {
+  let health = 100;
+  
+  // Reduce health for overdue tasks
+  const overdueTasks = tasks.filter(t => 
+    t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed'
+  );
+  health -= (overdueTasks.length / tasks.length) * 30;
+  
+  // Reduce health for project deadline
+  const daysToDeadline = Math.ceil((new Date(project.deadline) - new Date()) / (1000 * 60 * 60 * 24));
+  if (daysToDeadline < 0) health -= 20;
+  else if (daysToDeadline < 7) health -= 10;
+  
+  // Factor in completion rate
+  const completionRate = tasks.length > 0 ? tasks.filter(t => t.status === 'completed').length / tasks.length : 1;
+  if (completionRate < 0.5) health -= 15;
+  
+  return Math.max(0, Math.round(health));
+}
+
+function calculateTimeProgress(project) {
+  const start = new Date(project.startDate);
+  const end = new Date(project.deadline);
+  const now = new Date();
+  
+  const totalTime = end - start;
+  const elapsed = now - start;
+  
+  return Math.min(100, Math.max(0, Math.round((elapsed / totalTime) * 100)));
+}
+
+function calculateMemberContributions(tasks, members) {
+  return members.map(member => {
+    const memberTasks = tasks.filter(t => 
+      (t.assignedTo && t.assignedTo.toString() === (member.user._id || member.user).toString())
+    );
+    const completedTasks = memberTasks.filter(t => t.status === 'completed');
+    
+    return {
+      memberId: member.user._id || member.user,
+      name: member.user.name,
+      totalTasks: memberTasks.length,
+      completedTasks: completedTasks.length,
+      completionRate: memberTasks.length > 0 ? Math.round((completedTasks.length / memberTasks.length) * 100) : 0
+    };
+  });
+}
+
+/**
  * @desc    Remove member from project
  * @route   DELETE /api/v1/projects/:id/members/:memberId
- * @access  Private
+ * @access  Private (Supervisor only)
  */
 exports.removeMember = async (req, res, next) => {
   try {
@@ -488,30 +790,62 @@ exports.removeMember = async (req, res, next) => {
       });
     }
 
-    // Check if user has canManageMembers permission
     const userMember = getUserProjectRole(project, req.user.id);
-    
-    if (!userMember || !userMember.permissions.canManageMembers) {
+    if (!userMember || userMember.role !== 'supervisor') {
       return res.status(403).json({
         success: false,
-        error: 'Access denied. You do not have permission to manage members.'
+        error: 'Only supervisors can remove members'
       });
     }
 
-    // Prevent removing self if only supervisor
-    const supervisors = project.members.filter(member => member.role === 'supervisor');
-    if (req.user.id === memberId && supervisors.length === 1 && supervisors[0].user.toString() === req.user.id) {
+    const memberToRemove = project.members.find(m => 
+      (m.user._id || m.user).toString() === memberId
+    );
+
+    if (!memberToRemove) {
+      return res.status(404).json({
+        success: false,
+        error: 'Member not found in project'
+      });
+    }
+
+    // Don't allow supervisor to remove themselves if they're the only supervisor
+    const supervisors = project.members.filter(m => m.role === 'supervisor');
+    if (memberToRemove.role === 'supervisor' && supervisors.length === 1) {
       return res.status(400).json({
         success: false,
-        error: 'Cannot remove yourself as the only supervisor. Assign another supervisor first.'
+        error: 'Cannot remove the last supervisor from the project'
       });
     }
 
-    // Remove member
-    project.members = project.members.filter(member => member.user.toString() !== memberId);
+    // Remove member from project
+    project.members = project.members.filter(m => 
+      (m.user._id || m.user).toString() !== memberId
+    );
 
     await project.save();
     await project.populate('members.user', 'name email department jobTitle');
+
+    // Emit real-time update
+    socketService.emitToProject(project._id, 'project:member_removed', {
+      projectId: project._id,
+      memberId: memberId,
+      removedBy: req.user.name,
+      timestamp: new Date()
+    });
+
+    // Create notification for removed member
+    await createNotification({
+      recipient: memberId,
+      type: 'project_update',
+      title: 'Removed from Project',
+      message: `You have been removed from project "${project.name}"`,
+      data: {
+        projectId: project._id,
+        projectName: project.name,
+        action: 'member_removed'
+      }
+    });
 
     res.status(200).json({
       success: true,

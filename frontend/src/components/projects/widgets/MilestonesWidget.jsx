@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import projectService from '../../../services/projectService';
+import { useSocket } from '../../../context/SocketContext';
 
 const MilestonesWidget = ({ 
-  milestones = [], 
+  milestones: propMilestones = [], 
   project,
   userRole,
   permissions,
@@ -12,95 +14,196 @@ const MilestonesWidget = ({
   onExport,
   className 
 }) => {
+  const [milestones, setMilestones] = useState(propMilestones);
+  const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'timeline'
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState(null);
   const [sortBy, setSortBy] = useState('dueDate');
+
+  const { socket, isConnected } = useSocket();
 
   // Form state for create/edit modal
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     dueDate: '',
-    status: 'upcoming',
+    status: 'not-started',
     priority: 'medium',
-    assignedTo: '',
-    deliverables: []
+    assignedTo: [],
+    tasks: []
   });
+
+  // Fetch milestones when component mounts
+  useEffect(() => {
+    if (project?._id || project?.id) {
+      fetchMilestones();
+    }
+  }, [project?._id, project?.id]);
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setMilestones(propMilestones);
+  }, [propMilestones]);
+
+  // Real-time milestone updates via Socket.IO
+  useEffect(() => {
+    const handleMilestoneUpdate = (event) => {
+      const { milestone, action, projectId } = event.detail;
+      
+      // Only update if this is for the current project
+      if (projectId !== (project?._id || project?.id)) return;
+
+      switch (action) {
+        case 'created':
+          setMilestones(prev => [milestone, ...prev]);
+          if (onMilestoneCreate) onMilestoneCreate(milestone);
+          toast.success(`New milestone "${milestone.title}" has been created`);
+          break;
+        case 'updated':
+          setMilestones(prev => prev.map(m => m._id === milestone._id ? { ...m, ...milestone } : m));
+          if (onMilestoneUpdate) onMilestoneUpdate(milestone);
+          break;
+        case 'completed':
+          setMilestones(prev => prev.map(m => 
+            m._id === milestone._id ? { ...m, status: 'completed', completedAt: new Date() } : m
+          ));
+          toast.success(`🎉 Milestone "${milestone.title}" has been completed!`);
+          break;
+        case 'deleted':
+          setMilestones(prev => prev.filter(m => m._id !== milestone._id));
+          if (onMilestoneDelete) onMilestoneDelete(milestone._id);
+          toast.success(`Milestone "${milestone.title}" has been deleted`);
+          break;
+        default:
+          break;
+      }
+    };
+
+    // Listen for milestone updates via Socket.IO custom events
+    window.addEventListener('milestoneUpdated', handleMilestoneUpdate);
+
+    return () => {
+      window.removeEventListener('milestoneUpdated', handleMilestoneUpdate);
+    };
+  }, [project?._id, project?.id, onMilestoneCreate, onMilestoneUpdate, onMilestoneDelete]);
+
+  const fetchMilestones = async () => {
+    if (!project?._id && !project?.id) return;
+    
+    try {
+      setLoading(true);
+      const response = await projectService.getMilestones(project._id || project.id);
+      setMilestones(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch milestones:', error);
+      toast.error('Failed to fetch milestones');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
       title: '',
       description: '',
       dueDate: '',
-      status: 'upcoming',
+      status: 'not-started',
       priority: 'medium',
-      assignedTo: '',
-      deliverables: []
+      assignedTo: [],
+      tasks: []
     });
   };
 
   const handleCreateMilestone = async (e) => {
     e.preventDefault();
-    if (!permissions?.canCreateMilestone) {
+    if (!permissions?.canAssignTasks && userRole === 'teamMember') {
       toast.error('You do not have permission to create milestones');
       return;
     }
 
     try {
+      setLoading(true);
       const milestoneData = {
         ...formData,
-        id: Date.now().toString(),
-        projectId: project._id,
-        createdAt: new Date().toISOString(),
-        createdBy: 'current-user' // Replace with actual user
+        dueDate: new Date(formData.dueDate).toISOString()
       };
 
-      onMilestoneCreate?.(milestoneData);
+      const newMilestone = await projectService.createMilestone(project._id || project.id, milestoneData);
+      setMilestones(prev => [...prev, newMilestone]);
+      
+      if (onMilestoneCreate) {
+        onMilestoneCreate(newMilestone);
+      }
+      
       setShowCreateModal(false);
       resetForm();
       toast.success('Milestone created successfully');
     } catch (error) {
-      toast.error('Failed to create milestone');
+      console.error('Failed to create milestone:', error);
+      toast.error(error.message || 'Failed to create milestone');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUpdateMilestone = async (e) => {
-    e.preventDefault();
-    if (!permissions?.canEditMilestone) {
-      toast.error('You do not have permission to edit milestones');
+  const handleUpdateMilestone = async (milestoneId, updates) => {
+    if (!permissions?.canAssignTasks && userRole === 'teamMember') {
+      toast.error('You do not have permission to update milestones');
       return;
     }
 
     try {
-      const updatedMilestone = {
-        ...editingMilestone,
-        ...formData,
-        updatedAt: new Date().toISOString()
-      };
-
-      onMilestoneUpdate?.(updatedMilestone);
-      setEditingMilestone(null);
-      resetForm();
+      setLoading(true);
+      const updatedMilestone = await projectService.updateMilestone(
+        project._id || project.id, 
+        milestoneId, 
+        updates
+      );
+      
+      setMilestones(prev => prev.map(m => 
+        m._id === milestoneId ? updatedMilestone : m
+      ));
+      
+      if (onMilestoneUpdate) {
+        onMilestoneUpdate(updatedMilestone);
+      }
+      
       toast.success('Milestone updated successfully');
     } catch (error) {
-      toast.error('Failed to update milestone');
+      console.error('Failed to update milestone:', error);
+      toast.error(error.message || 'Failed to update milestone');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDeleteMilestone = async (milestoneId) => {
-    if (!permissions?.canDeleteMilestone) {
+    if (!permissions?.canAssignTasks && userRole !== 'supervisor') {
       toast.error('You do not have permission to delete milestones');
       return;
     }
 
-    if (window.confirm('Are you sure you want to delete this milestone?')) {
-      try {
-        onMilestoneDelete?.(milestoneId);
-        toast.success('Milestone deleted successfully');
-      } catch (error) {
-        toast.error('Failed to delete milestone');
+    if (!window.confirm('Are you sure you want to delete this milestone?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await projectService.deleteMilestone(project._id || project.id, milestoneId);
+      
+      setMilestones(prev => prev.filter(m => m._id !== milestoneId));
+      
+      if (onMilestoneDelete) {
+        onMilestoneDelete(milestoneId);
       }
+      
+      toast.success('Milestone deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete milestone:', error);
+      toast.error(error.message || 'Failed to delete milestone');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,8 +245,8 @@ const MilestonesWidget = ({
     }
   };
 
-  const isOverdue = (dueDate) => {
-    return new Date(dueDate) < new Date() && formData.status !== 'completed';
+  const isOverdue = (dueDate, status) => {
+    return new Date(dueDate) < new Date() && status !== 'completed';
   };
 
   const sortedMilestones = [...milestones].sort((a, b) => {
@@ -278,10 +381,10 @@ const MilestonesWidget = ({
               </div>
             ) : (
               sortedMilestones.map((milestone) => (
-                <div key={milestone.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div key={milestone._id || milestone.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2">
-                      {getStatusIcon(isOverdue(milestone.dueDate) ? 'overdue' : milestone.status)}
+                      {getStatusIcon(isOverdue(milestone.dueDate, milestone.status) ? 'overdue' : milestone.status)}
                       <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(milestone.priority)}`}>
                         {milestone.priority}
                       </span>
@@ -300,7 +403,7 @@ const MilestonesWidget = ({
                       )}
                       {permissions?.canDeleteMilestone && (
                         <button
-                          onClick={() => handleDeleteMilestone(milestone.id)}
+                          onClick={() => handleDeleteMilestone(milestone._id || milestone.id)}
                           className="text-gray-400 hover:text-red-600 dark:hover:text-red-400"
                           title="Delete milestone"
                         >
@@ -331,12 +434,12 @@ const MilestonesWidget = ({
           // Timeline View
           <div className="space-y-4">
             {sortedMilestones.map((milestone, index) => (
-              <div key={milestone.id} className="flex items-start space-x-4">
+              <div key={milestone._id || milestone.id} className="flex items-start space-x-4">
                 <div className="flex flex-col items-center">
                   <div className={`w-4 h-4 rounded-full border-2 ${
                     milestone.status === 'completed' ? 'bg-green-500 border-green-500' :
                     milestone.status === 'inProgress' ? 'bg-blue-500 border-blue-500' :
-                    isOverdue(milestone.dueDate) ? 'bg-red-500 border-red-500' : 'bg-gray-300 border-gray-300'
+                    isOverdue(milestone.dueDate, milestone.status) ? 'bg-red-500 border-red-500' : 'bg-gray-300 border-gray-300'
                   }`}></div>
                   {index < sortedMilestones.length - 1 && (
                     <div className="w-0.5 h-12 bg-gray-300 dark:bg-gray-600 mt-2"></div>
@@ -398,7 +501,16 @@ const MilestonesWidget = ({
               </button>
             </div>
 
-            <form onSubmit={editingMilestone ? handleUpdateMilestone : handleCreateMilestone} className="space-y-4">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (editingMilestone) {
+                handleUpdateMilestone(editingMilestone._id, formData);
+                setEditingMilestone(null);
+                resetForm();
+              } else {
+                handleCreateMilestone(e);
+              }
+            }} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Title *

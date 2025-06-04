@@ -1,21 +1,54 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import fileService from '../../../services/fileService';
 
 const FilesWidget = ({ 
-  files = [], 
+  files: propFiles = [], 
   project, 
   userRole, 
-  permissions,
+  permissions = {},
   onFileUpload,
   onFileDelete,
   className 
 }) => {
+  const [files, setFiles] = useState(propFiles);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setFiles(propFiles);
+  }, [propFiles]);
+
+  // Fetch files when project changes
+  useEffect(() => {
+    if (project?._id || project?.id) {
+      fetchFiles();
+    }
+  }, [project?._id, project?.id]);
+
+  // Fetch files from API
+  const fetchFiles = async () => {
+    if (!project?._id && !project?.id) return;
+    
+    try {
+      setLoading(true);
+      const response = await fileService.getProjectFiles(project._id || project.id);
+      setFiles(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch files:', error);
+      toast.error('Failed to fetch files');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getFileIcon = (filename) => {
     const extension = filename.split('.').pop()?.toLowerCase();
@@ -86,27 +119,83 @@ const FilesWidget = ({
     }
 
     setUploading(true);
-    try {
-      for (const file of filesToUpload) {
-        // Mock file upload - replace with actual service
-        const uploadedFile = {
-          _id: Date.now().toString() + Math.random(),
-          filename: file.name,
-          originalName: file.name,
-          size: file.size,
-          mimetype: file.type,
-          uploadedBy: 'current-user',
-          uploadedAt: new Date().toISOString(),
-          url: URL.createObjectURL(file) // Mock URL
-        };
+    const uploadResults = [];
 
-        onFileUpload?.(uploadedFile);
+    try {
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const fileId = `upload-${Date.now()}-${i}`;
+
+        // Initialize progress tracking
+        setUploadProgress(prev => ({ ...prev, [fileId]: 0 }));
+
+        try {
+          // Get upload URL
+          const uploadData = await fileService.getUploadUrl({
+            filename: file.name,
+            contentType: file.type,
+            projectId: project._id || project.id
+          });
+
+          // Upload file with progress tracking
+          await fileService.uploadFileWithSignedUrl(
+            uploadData.uploadUrl,
+            file,
+            (progress) => {
+              setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
+            }
+          );
+
+          // Save metadata
+          const savedFile = await fileService.saveFileMetadata({
+            ...uploadData.metadata,
+            projectId: project._id || project.id
+          });
+
+          // Update local state
+          const newFile = {
+            _id: savedFile._id || fileId,
+            filename: file.name,
+            originalName: file.name,
+            size: file.size,
+            mimetype: file.type,
+            uploadedBy: savedFile.uploadedBy || 'current-user',
+            uploadedAt: savedFile.uploadedAt || new Date().toISOString(),
+            url: savedFile.url,
+            key: savedFile.key
+          };
+
+          setFiles(prev => [...prev, newFile]);
+          uploadResults.push(newFile);
+
+          if (onFileUpload) {
+            onFileUpload(newFile);
+          }
+        } catch (fileError) {
+          console.error(`Failed to upload ${file.name}:`, fileError);
+          toast.error(`Failed to upload ${file.name}: ${fileError.message}`);
+        } finally {
+          // Clean up progress tracking
+          setUploadProgress(prev => {
+            const newProgress = { ...prev };
+            delete newProgress[fileId];
+            return newProgress;
+          });
+        }
       }
-      toast.success(`${filesToUpload.length} file(s) uploaded successfully`);
+
+      if (uploadResults.length > 0) {
+        toast.success(`${uploadResults.length} file(s) uploaded successfully`);
+      }
     } catch (error) {
+      console.error('Upload error:', error);
       toast.error('Failed to upload files');
     } finally {
       setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -127,27 +216,122 @@ const FilesWidget = ({
     handleFileUpload(droppedFiles);
   };
 
-  const handleDownload = (file) => {
-    // Mock download - replace with actual download logic
-    const link = document.createElement('a');
-    link.href = file.url || '#';
-    link.download = file.filename;
-    link.click();
-    toast.success('Download started');
+  const handleDownload = async (file) => {
+    try {
+      let downloadUrl = file.url;
+      
+      // If file has a key, get a fresh download URL
+      if (file.key) {
+        downloadUrl = await fileService.getDownloadUrl(file.key);
+      }
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = file.originalName || file.filename;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Download started');
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error('Failed to download file');
+    }
   };
 
-  const handleDelete = async (fileId) => {
+  const handleDelete = async (file) => {
     if (!permissions?.canDelete) {
       toast.error('You do not have permission to delete files');
       return;
     }
 
-    if (window.confirm('Are you sure you want to delete this file?')) {
+    if (window.confirm(`Are you sure you want to delete "${file.filename}"?`)) {
       try {
-        onFileDelete?.(fileId);
+        // Delete from server
+        if (file.key) {
+          await fileService.deleteFile(file.key);
+        }
+        
+        // Update local state
+        setFiles(prev => prev.filter(f => f._id !== file._id));
+        
+        if (onFileDelete) {
+          onFileDelete(file._id);
+        }
+        
+        toast.success('File deleted successfully');
       } catch (error) {
+        console.error('Delete failed:', error);
         toast.error('Failed to delete file');
       }
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    if (selectedFiles.length === 0) {
+      toast.error('Please select files to download');
+      return;
+    }
+
+    try {
+      for (const fileId of selectedFiles) {
+        const file = files.find(f => f._id === fileId);
+        if (file) {
+          await handleDownload(file);
+          // Add delay between downloads to avoid overwhelming the browser
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    } catch (error) {
+      toast.error('Failed to download some files');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!permissions?.canDelete) {
+      toast.error('You do not have permission to delete files');
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      toast.error('Please select files to delete');
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to delete ${selectedFiles.length} files?`)) {
+      try {
+        for (const fileId of selectedFiles) {
+          const file = files.find(f => f._id === fileId);
+          if (file && file.key) {
+            await fileService.deleteFile(file.key);
+          }
+        }
+        
+        setFiles(prev => prev.filter(f => !selectedFiles.includes(f._id)));
+        setSelectedFiles([]);
+        
+        toast.success(`${selectedFiles.length} files deleted successfully`);
+      } catch (error) {
+        toast.error('Failed to delete some files');
+      }
+    }
+  };
+
+  const handleFileSelection = (fileId, checked) => {
+    if (checked) {
+      setSelectedFiles(prev => [...prev, fileId]);
+    } else {
+      setSelectedFiles(prev => prev.filter(id => id !== fileId));
+    }
+  };
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedFiles(filteredFiles.map(f => f._id));
+    } else {
+      setSelectedFiles([]);
     }
   };
 
@@ -205,6 +389,33 @@ const FilesWidget = ({
               </svg>
             </button>
           </div>
+
+          {/* Bulk Actions */}
+          {selectedFiles.length > 0 && (
+            <div className="flex items-center space-x-2 px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+              <span className="text-purple-600 dark:text-purple-400 text-sm font-medium">
+                {selectedFiles.length} selected
+              </span>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={handleBulkDownload}
+                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  disabled={loading}
+                >
+                  Download
+                </button>
+                {permissions?.canDelete && (
+                  <button
+                    onClick={handleBulkDelete}
+                    className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                    disabled={loading}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {permissions?.canUpload && (
             <button

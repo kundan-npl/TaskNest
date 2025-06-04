@@ -164,7 +164,12 @@ const fileController = {
    */
   listFiles: async (req, res) => {
     try {
-      const { projectId, taskId } = req.query;
+      // Get projectId from route params when called from nested route
+      const { projectId: routeProjectId } = req.params;
+      const { projectId: queryProjectId, taskId } = req.query;
+      
+      // Use route param if available, otherwise use query param
+      const projectId = routeProjectId || queryProjectId;
 
       const files = await fileService.listFiles({
         projectId,

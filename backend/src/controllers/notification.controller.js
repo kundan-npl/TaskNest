@@ -270,3 +270,377 @@ exports.notifyTaskAssignees = async (assigneeIds, notificationData, excludeUsers
     throw error;
   }
 };
+
+/**
+ * @desc    Get project-specific notifications
+ * @route   GET /api/v1/projects/:projectId/notifications
+ * @access  Private
+ */
+exports.getProjectNotifications = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { page = 1, limit = 20, unread, types } = req.query;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    // Check if user is a member
+    const userMember = project.members.find(member => {
+      const memberUserId = member.user._id || member.user;
+      return memberUserId.toString() === req.user.id;
+    });
+
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view notifications for this project'
+      });
+    }
+
+    // Build query
+    let query = {
+      users: req.user.id,
+      'data.projectId': projectId
+    };
+
+    if (unread === 'true') {
+      query.isRead = false;
+    }
+
+    if (types) {
+      const typeArray = types.split(',');
+      query.type = { $in: typeArray };
+    }
+
+    const notifications = await Notification.find(query)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Notification.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      count: notifications.length,
+      data: notifications,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update notification preferences for a project
+ * @route   PUT /api/v1/projects/:projectId/notifications/preferences
+ * @access  Private
+ */
+exports.updateProjectNotificationPreferences = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const preferences = req.body;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    // Check if user is a member
+    const userMember = project.members.find(member => {
+      const memberUserId = member.user._id || member.user;
+      return memberUserId.toString() === req.user.id;
+    });
+
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update preferences for this project'
+      });
+    }
+
+    // Update user's notification preferences for this project
+    const User = require('../models/user.model');
+    const user = await User.findById(req.user.id);
+    
+    if (!user.notificationPreferences) {
+      user.notificationPreferences = {};
+    }
+    if (!user.notificationPreferences.projects) {
+      user.notificationPreferences.projects = {};
+    }
+
+    user.notificationPreferences.projects[projectId] = {
+      ...user.notificationPreferences.projects[projectId],
+      ...preferences,
+      updatedAt: new Date()
+    };
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      data: user.notificationPreferences.projects[projectId]
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get notification preferences for a project
+ * @route   GET /api/v1/projects/:projectId/notifications/preferences
+ * @access  Private
+ */
+exports.getProjectNotificationPreferences = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    // Check if user is a member
+    const userMember = project.members.find(member => {
+      const memberUserId = member.user._id || member.user;
+      return memberUserId.toString() === req.user.id;
+    });
+
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view preferences for this project'
+      });
+    }
+
+    const User = require('../models/user.model');
+    const user = await User.findById(req.user.id);
+
+    // Default preferences if none exist
+    const defaultPreferences = {
+      taskUpdates: true,
+      projectUpdates: true,
+      newMessages: true,
+      mentions: true,
+      deadlineReminders: true,
+      milestoneUpdates: true,
+      memberChanges: true,
+      discussionUpdates: false
+    };
+
+    const preferences = user.notificationPreferences?.projects?.[projectId] || defaultPreferences;
+
+    res.status(200).json({
+      success: true,
+      data: preferences
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Mark project notifications as read
+ * @route   PUT /api/v1/projects/:projectId/notifications/mark-read
+ * @access  Private
+ */
+exports.markProjectNotificationsAsRead = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { notificationIds } = req.body;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    let query = {
+      users: req.user.id,
+      'data.projectId': projectId,
+      isRead: false
+    };
+
+    // If specific notification IDs provided, filter by them
+    if (notificationIds && notificationIds.length > 0) {
+      query._id = { $in: notificationIds };
+    }
+
+    const result = await Notification.updateMany(
+      query,
+      { 
+        isRead: true,
+        readAt: new Date()
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        modifiedCount: result.modifiedCount,
+        message: `${result.modifiedCount} notifications marked as read`
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get notification statistics for project
+ * @route   GET /api/v1/projects/:projectId/notifications/stats
+ * @access  Private
+ */
+exports.getProjectNotificationStats = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const [totalCount, unreadCount, typeStats] = await Promise.all([
+      // Total notifications for this project
+      Notification.countDocuments({
+        users: req.user.id,
+        'data.projectId': projectId
+      }),
+      
+      // Unread notifications
+      Notification.countDocuments({
+        users: req.user.id,
+        'data.projectId': projectId,
+        isRead: false
+      }),
+      
+      // Count by notification type
+      Notification.aggregate([
+        {
+          $match: {
+            users: req.user.id,
+            'data.projectId': mongoose.Types.ObjectId(projectId)
+          }
+        },
+        {
+          $group: {
+            _id: '$type',
+            count: { $sum: 1 },
+            unread: {
+              $sum: {
+                $cond: [{ $eq: ['$isRead', false] }, 1, 0]
+              }
+            }
+          }
+        }
+      ])
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        total: totalCount,
+        unread: unreadCount,
+        typeBreakdown: typeStats
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Create project-specific notification
+ * @route   POST /api/v1/projects/:projectId/notifications
+ * @access  Private (Team Lead/Supervisor)
+ */
+exports.createProjectNotification = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { message, type = 'project_announcement', targetUsers, priority = 'normal' } = req.body;
+
+    // Verify project access and permissions
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = project.members.find(member => {
+      const memberUserId = member.user._id || member.user;
+      return memberUserId.toString() === req.user.id;
+    });
+
+    if (!userMember || (userMember.role === 'teamMember' && !userMember.permissions.canManageMembers)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to create notifications for this project'
+      });
+    }
+
+    // Determine target users
+    let users = targetUsers;
+    if (!users || users.length === 0) {
+      // Send to all project members
+      users = project.members.map(member => member.user._id || member.user);
+    }
+
+    const notificationData = {
+      type,
+      message,
+      users,
+      priority,
+      data: {
+        projectId: projectId,
+        projectTitle: project.title,
+        createdBy: req.user.name
+      },
+      createdBy: req.user.id
+    };
+
+    const notification = await createNotification(notificationData);
+
+    // Emit real-time notification
+    const socketService = require('../services/socketService');
+    socketService.emitToProject(projectId, 'notification:new', {
+      notification,
+      timestamp: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      data: notification
+    });
+  } catch (error) {
+    next(error);
+  }
+};

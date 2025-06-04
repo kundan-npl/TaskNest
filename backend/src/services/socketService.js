@@ -306,6 +306,11 @@ class SocketService {
     });
   }
 
+  // Generic method to emit events to project room
+  emitToProject(projectId, eventName, data) {
+    this.io.to(`project_${projectId}`).emit(eventName, data);
+  }
+
   // Track dashboard activity for analytics
   trackDashboardActivity(userId, activity) {
     // This could store activity in database for analytics

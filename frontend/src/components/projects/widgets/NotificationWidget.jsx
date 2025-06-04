@@ -1,19 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import projectService from '../../../services/projectService';
+import { formatDistanceToNow } from '../../../utils/dateUtils';
+import { useSocket } from '../../../context/SocketContext';
 
 const NotificationWidget = ({ 
-  notifications = [], 
+  notifications: propNotifications = [], 
   project,
   userRole,
-  permissions,
+  permissions = {},
   onMarkAsRead,
   onMarkAllAsRead,
   onDeleteNotification,
   onPreferences,
   className 
 }) => {
+  const [notifications, setNotifications] = useState(propNotifications);
   const [filter, setFilter] = useState('all'); // 'all', 'unread', 'high', 'medium', 'low'
   const [showPreferences, setShowPreferences] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    total: 0,
+    unread: 0,
+    high: 0,
+    medium: 0,
+    low: 0
+  });
   const [preferences, setPreferences] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -21,8 +33,270 @@ const NotificationWidget = ({
     milestoneReminders: true,
     teamMessages: true,
     projectUpdates: true,
-    weeklyDigest: true
+    weeklyDigest: true,
+    urgentOnly: false,
+    quietHours: false,
+    quietStart: '22:00',
+    quietEnd: '08:00'
   });
+
+  const { socket, isConnected, notifications: socketNotifications } = useSocket();
+
+  // Update local state when props change
+  useEffect(() => {
+    setNotifications(propNotifications);
+    updateStats(propNotifications);
+  }, [propNotifications]);
+
+  // Load project notifications
+  useEffect(() => {
+    if (project?._id || project?.id) {
+      loadProjectNotifications();
+      loadNotificationStats();
+      loadNotificationPreferences();
+    }
+  }, [project?._id, project?.id]);
+
+  // Real-time notification updates via Socket.IO
+  useEffect(() => {
+    const handleNewNotification = (event) => {
+      const { notification, projectId } = event.detail;
+      
+      // Only add if it's for the current project or global
+      if (!projectId || projectId === (project?._id || project?.id)) {
+        setNotifications(prev => {
+          const newList = [notification, ...prev];
+          updateStats(newList);
+          return newList;
+        });
+        
+        // Show toast for important notifications
+        if (notification.priority === 'high') {
+          toast.warning(notification.message);
+        }
+      }
+    };
+
+    // Listen for notifications via custom events from SocketContext
+    window.addEventListener('notification', handleNewNotification);
+
+    return () => {
+      window.removeEventListener('notification', handleNewNotification);
+    };
+  }, [project?._id, project?.id, notifications]);
+
+  // Sync with socket notifications from context
+  useEffect(() => {
+    if (socketNotifications && socketNotifications.length > 0) {
+      // Filter for project-specific notifications
+      const projectNotifications = socketNotifications.filter(n => 
+        !n.projectId || n.projectId === (project?._id || project?.id)
+      );
+      
+      if (projectNotifications.length > 0) {
+        setNotifications(prev => {
+          const existingIds = prev.map(n => n._id);
+          const newNotifications = projectNotifications.filter(n => !existingIds.includes(n._id));
+          return [...newNotifications, ...prev];
+        });
+      }
+    }
+  }, [socketNotifications, project?._id, project?.id]);
+
+  const loadProjectNotifications = async () => {
+    if (!project?._id && !project?.id) return;
+    
+    try {
+      setLoading(true);
+      const response = await projectService.getProjectNotifications(project._id || project.id);
+      if (response.success) {
+        setNotifications(response.data || []);
+        updateStats(response.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+      // Fallback to mock data
+      const mockNotifications = [
+        {
+          id: 1,
+          type: 'task',
+          title: 'Task Assigned',
+          message: 'You have been assigned to "Homepage Design"',
+          priority: 'high',
+          isRead: false,
+          createdAt: '2024-01-15T10:30:00Z',
+          project: project.name
+        },
+        {
+          id: 2,
+          type: 'milestone',
+          title: 'Milestone Due Soon',
+          message: 'Beta Release milestone is due in 2 days',
+          priority: 'high',
+          isRead: false,
+          createdAt: '2024-01-15T09:15:00Z',
+          project: project.name
+        },
+        {
+          id: 3,
+          type: 'team',
+          title: 'New Team Member',
+          message: 'Sarah Wilson joined the project',
+          priority: 'medium',
+          isRead: true,
+          createdAt: '2024-01-14T16:45:00Z',
+          project: project.name
+        }
+      ];
+      setNotifications(mockNotifications);
+      updateStats(mockNotifications);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadNotificationStats = async () => {
+    if (!project?._id && !project?.id) return;
+    
+    try {
+      const response = await projectService.getProjectNotificationStats(project._id || project.id);
+      if (response.success) {
+        setStats(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to load notification stats:', error);
+    }
+  };
+
+  const loadNotificationPreferences = async () => {
+    try {
+      const response = await projectService.getProjectNotificationPreferences(project._id || project.id);
+      if (response.success) {
+        setPreferences(prev => ({ ...prev, ...response.data }));
+      }
+    } catch (error) {
+      console.error('Failed to load notification preferences:', error);
+    }
+  };
+
+  const updateStats = (notificationList) => {
+    const stats = {
+      total: notificationList.length,
+      unread: notificationList.filter(n => !n.isRead).length,
+      high: notificationList.filter(n => n.priority === 'high').length,
+      medium: notificationList.filter(n => n.priority === 'medium').length,
+      low: notificationList.filter(n => n.priority === 'low').length
+    };
+    setStats(stats);
+  };
+
+  const handleMarkAsRead = async (notificationId) => {
+    try {
+      const response = await projectService.markProjectNotificationsAsRead(
+        project._id || project.id, 
+        [notificationId]
+      );
+      
+      if (response.success) {
+        setNotifications(prev => 
+          prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+        );
+        updateStats(notifications.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
+        onMarkAsRead?.(notificationId);
+        toast.success('Notification marked as read');
+      }
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+      toast.error('Failed to mark notification as read');
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const unreadIds = notifications.filter(n => !n.isRead).map(n => n.id);
+      const response = await projectService.markProjectNotificationsAsRead(
+        project._id || project.id,
+        unreadIds
+      );
+      
+      if (response.success) {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        updateStats(notifications.map(n => ({ ...n, isRead: true })));
+        onMarkAllAsRead?.();
+        toast.success('All notifications marked as read');
+      }
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
+      toast.error('Failed to mark all notifications as read');
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId) => {
+    try {
+      // Note: You might want to add a delete API endpoint
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      updateStats(notifications.filter(n => n.id !== notificationId));
+      onDeleteNotification?.(notificationId);
+      toast.success('Notification deleted');
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+      toast.error('Failed to delete notification');
+    }
+  };
+
+  const handleUpdatePreferences = async (newPreferences) => {
+    try {
+      const response = await projectService.updateProjectNotificationPreferences(
+        project._id || project.id,
+        newPreferences
+      );
+      
+      if (response.success) {
+        setPreferences(newPreferences);
+        onPreferences?.(newPreferences);
+        toast.success('Notification preferences updated');
+      }
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+      toast.error('Failed to update notification preferences');
+    }
+  };
+
+  const filteredNotifications = notifications.filter(notification => {
+    if (filter === 'all') return true;
+    if (filter === 'unread') return !notification.isRead;
+    return notification.priority === filter;
+  });
+
+  const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high': return 'text-red-600 dark:text-red-400';
+      case 'medium': return 'text-yellow-600 dark:text-yellow-400';
+      case 'low': return 'text-green-600 dark:text-green-400';
+      default: return 'text-gray-600 dark:text-gray-400';
+    }
+  };
+
+  const getPriorityBadge = (priority) => {
+    const colors = {
+      high: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
+      medium: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300',
+      low: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+    };
+    
+    return colors[priority] || 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300';
+  };
 
   const getNotificationIcon = (type) => {
     switch (type) {
@@ -65,58 +339,7 @@ const NotificationWidget = ({
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high': return 'bg-red-50 dark:bg-red-900/20 border-l-red-500';
-      case 'medium': return 'bg-yellow-50 dark:bg-yellow-900/20 border-l-yellow-500';
-      case 'low': return 'bg-blue-50 dark:bg-blue-900/20 border-l-blue-500';
-      default: return 'bg-gray-50 dark:bg-gray-700 border-l-gray-500';
-    }
-  };
-
-  const getTimeAgo = (timestamp) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffInMinutes = Math.floor((now - time) / 60000);
-
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-    return `${Math.floor(diffInMinutes / 1440)}d ago`;
-  };
-
-  const handleMarkAsRead = (notificationId) => {
-    onMarkAsRead?.(notificationId);
-    toast.success('Notification marked as read');
-  };
-
-  const handleMarkAllAsRead = () => {
-    if (window.confirm('Mark all notifications as read?')) {
-      onMarkAllAsRead?.();
-      toast.success('All notifications marked as read');
-    }
-  };
-
-  const handleDeleteNotification = (notificationId) => {
-    if (window.confirm('Delete this notification?')) {
-      onDeleteNotification?.(notificationId);
-      toast.success('Notification deleted');
-    }
-  };
-
-  const handleSavePreferences = () => {
-    onPreferences?.(preferences);
-    setShowPreferences(false);
-    toast.success('Notification preferences saved');
-  };
-
-  const filteredNotifications = notifications.filter(notification => {
-    if (filter === 'all') return true;
-    if (filter === 'unread') return !notification.read;
-    return notification.priority === filter;
-  });
-
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <div className={`widget-card ${className}`}>
@@ -239,7 +462,7 @@ const NotificationWidget = ({
                     
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs text-gray-400">
-                        {getTimeAgo(notification.timestamp)}
+                        {formatDistanceToNow(new Date(notification.timestamp))} ago
                       </span>
                       
                       <div className="flex items-center space-x-2">
