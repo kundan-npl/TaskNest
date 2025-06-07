@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { projectService } from '../../../services/projectService';
+import projectService from '../../../services/projectService';
 import { useSocket } from '../../../context/SocketContext';
 
 const TeamManagementWidget = ({ 

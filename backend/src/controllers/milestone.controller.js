@@ -1,77 +1,9 @@
 const mongoose = require('mongoose');
 const Project = require('../models/project.model');
+const Task = require('../models/task.model');
+const Milestone = require('../models/milestone.model');
 const socketService = require('../services/socketService');
 const { createNotification } = require('./notification.controller');
-
-// Milestone Schema (we'll add this to the project model later)
-const MilestoneSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: [true, 'Please add a milestone title'],
-    trim: true,
-    maxlength: [200, 'Title cannot be more than 200 characters']
-  },
-  description: {
-    type: String,
-    maxlength: [1000, 'Description cannot be more than 1000 characters']
-  },
-  dueDate: {
-    type: Date,
-    required: [true, 'Please add a due date']
-  },
-  status: {
-    type: String,
-    enum: ['not-started', 'in-progress', 'completed', 'overdue'],
-    default: 'not-started'
-  },
-  priority: {
-    type: String,
-    enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
-  },
-  project: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Project',
-    required: true
-  },
-  assignedTo: [{
-    type: mongoose.Schema.ObjectId,
-    ref: 'User'
-  }],
-  dependencies: [{
-    milestone: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'Milestone'
-    },
-    type: {
-      type: String,
-      enum: ['blocks', 'depends-on'],
-      default: 'depends-on'
-    }
-  }],
-  tasks: [{
-    type: mongoose.Schema.ObjectId,
-    ref: 'Task'
-  }],
-  completedAt: Date,
-  createdBy: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  progress: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 100
-  }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
-
-const Milestone = mongoose.model('Milestone', MilestoneSchema);
 
 /**
  * Helper function to check user's role in a project
@@ -130,7 +62,6 @@ exports.getProjectMilestones = async (req, res, next) => {
     const milestonesWithProgress = await Promise.all(
       milestones.map(async (milestone) => {
         if (milestone.tasks.length > 0) {
-          const Task = require('../models/task.model');
           const tasks = await Task.find({ _id: { $in: milestone.tasks } });
           const completedTasks = tasks.filter(task => task.status === 'completed');
           milestone.progress = Math.round((completedTasks.length / tasks.length) * 100);

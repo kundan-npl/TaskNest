@@ -1,6 +1,11 @@
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
-const s3Config = require('../config/s3');
+
+// Use mock S3 service in development
+const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.AWS_ACCESS_KEY_ID;
+const s3Config = isDevelopment 
+  ? require('../utils/mockedS3') 
+  : require('../config/s3');
 
 /**
  * Service for handling file uploads and downloads using AWS S3

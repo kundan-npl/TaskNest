@@ -42,45 +42,42 @@ const TaskManagementWidget = ({
   // Real-time task updates via Socket.IO
   useEffect(() => {
     const handleTaskUpdate = (event) => {
-      const { task, action, projectId } = event.detail;
+      const { task, action, projectId, type } = event.detail;
       
       // Only update if this is for the current project
       if (projectId !== (project?._id || project?.id)) return;
 
-      switch (action) {
-        case 'created':
-          setTasks(prev => [task, ...prev]);
-          toast.success(`New task "${task.title}" has been created`);
-          break;
-        case 'updated':
-          setTasks(prev => prev.map(t => t._id === task._id ? { ...t, ...task } : t));
-          if (onTaskUpdate) onTaskUpdate(task);
-          break;
-        case 'deleted':
-          setTasks(prev => prev.filter(t => t._id !== task._id));
-          if (onTaskDelete) onTaskDelete(task._id);
-          toast.success(`Task "${task.title}" has been deleted`);
-          break;
-        case 'status_changed':
-          setTasks(prev => prev.map(t => 
-            t._id === task._id ? { ...t, status: task.status } : t
-          ));
-          break;
-        case 'assigned':
-          setTasks(prev => prev.map(t => 
-            t._id === task._id ? { ...t, assignedTo: task.assignedTo } : t
-          ));
-          break;
-        default:
-          break;
+      // Handle different types of task updates
+      if (type === 'task_created' || action === 'created') {
+        setTasks(prev => [task, ...prev]);
+        toast.success(`New task "${task.title}" has been created`);
+      } else if (type === 'task_updated' || action === 'updated') {
+        setTasks(prev => prev.map(t => t._id === task._id ? { ...t, ...task } : t));
+        if (onTaskUpdate) onTaskUpdate(task);
+      } else if (type === 'task_deleted' || action === 'deleted') {
+        setTasks(prev => prev.filter(t => t._id !== task._id));
+        if (onTaskDelete) onTaskDelete(task._id);
+        toast.success(`Task "${task.title}" has been deleted`);
+      } else if (type === 'task_status_changed' || action === 'status_changed') {
+        setTasks(prev => prev.map(t => 
+          t._id === task._id ? { ...t, status: task.status } : t
+        ));
+      } else if (type === 'task_assigned' || action === 'assigned') {
+        setTasks(prev => prev.map(t => 
+          t._id === task._id ? { ...t, assignedTo: task.assignedTo } : t
+        ));
       }
     };
 
-    // Listen for task updates via custom events from SocketContext
+    // Listen for all task-related events
+    window.addEventListener('task_status_changed', handleTaskUpdate);
     window.addEventListener('taskUpdated', handleTaskUpdate);
+    window.addEventListener('new_task_comment', handleTaskUpdate);
 
     return () => {
+      window.removeEventListener('task_status_changed', handleTaskUpdate);
       window.removeEventListener('taskUpdated', handleTaskUpdate);
+      window.removeEventListener('new_task_comment', handleTaskUpdate);
     };
   }, [project?._id, project?.id, onTaskUpdate, onTaskDelete]);
 

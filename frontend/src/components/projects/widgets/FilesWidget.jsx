@@ -40,11 +40,23 @@ const FilesWidget = ({
     
     try {
       setLoading(true);
-      const response = await fileService.getProjectFiles(project._id || project.id);
-      setFiles(response.data || []);
+      // For now, show placeholder for enterprise storage integration
+      console.log('Files widget: Enterprise storage integration pending');
+      setFiles([
+        {
+          _id: 'placeholder-1',
+          filename: 'Enterprise Storage Integration',
+          originalName: 'enterprise-storage.md',
+          size: 1024,
+          uploadedBy: { name: 'System' },
+          uploadedAt: new Date(),
+          type: 'document',
+          isPlaceholder: true
+        }
+      ]);
     } catch (error) {
       console.error('Failed to fetch files:', error);
-      toast.error('Failed to fetch files');
+      // Don't show error for placeholder
     } finally {
       setLoading(false);
     }

@@ -18,5 +18,19 @@ export default defineConfig({
     alias: {
       '@': '/src',
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split vendor libraries
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['react-toastify'],
+          'vendor-socket': ['socket.io-client'],
+          'vendor-http': ['axios']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 600
   }
 });

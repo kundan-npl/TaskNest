@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { SocketProvider } from './context/SocketContext.jsx';
@@ -10,33 +10,38 @@ import './assets/styles/dark-theme.css';
 import Layout from './components/layout/Layout.jsx';
 import AuthLayout from './components/layout/AuthLayout.jsx';
 
-// Auth pages
+// Auth pages (keep these loaded since they're small and often needed)
 import Login from './pages/auth/Login.jsx';
 import Register from './pages/auth/Register.jsx';
 import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 import ResetPassword from './pages/auth/ResetPassword.jsx';
-import UserManagement from './pages/users/UserManagement.jsx';
-
-// Main pages
-import Home from './pages/Home.jsx';
-import Dashboard from './pages/dashboard/Dashboard.jsx';
-import ProjectsList from './pages/projects/ProjectsList.jsx';
-import ProjectDetails from './pages/projects/ProjectDetails.jsx';
-import CreateProject from './pages/projects/CreateProject.jsx';
-import EditProject from './pages/projects/EditProject.jsx';
-import TaskDetails from './pages/tasks/TaskDetails.jsx';
-import CreateTask from './pages/tasks/CreateTask.jsx';
-import TaskCalendar from './pages/tasks/TaskCalendar.jsx';
-import MyTasks from './pages/tasks/MyTasks.jsx';
-import UserProfile from './pages/profile/UserProfile.jsx';
-import Settings from './pages/settings/Settings.jsx';
-
-// Testing pages
-// Widget integration test removed during cleanup
 
 // Protected route component
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
 import RoleBasedRoute from './components/common/RoleBasedRoute.jsx';
+
+// Lazy load heavy components
+const Home = lazy(() => import('./pages/Home.jsx'));
+const Dashboard = lazy(() => import('./pages/dashboard/Dashboard.jsx'));
+const ProjectsList = lazy(() => import('./pages/projects/ProjectsList.jsx'));
+const ProjectDetails = lazy(() => import('./pages/projects/ProjectDetails.jsx'));
+const CreateProject = lazy(() => import('./pages/projects/CreateProject.jsx'));
+const EditProject = lazy(() => import('./pages/projects/EditProject.jsx'));
+const TaskDetails = lazy(() => import('./pages/tasks/TaskDetails.jsx'));
+const CreateTask = lazy(() => import('./pages/tasks/CreateTask.jsx'));
+const TaskCalendar = lazy(() => import('./pages/tasks/TaskCalendar.jsx'));
+const MyTasks = lazy(() => import('./pages/tasks/MyTasks.jsx'));
+const UserProfile = lazy(() => import('./pages/profile/UserProfile.jsx'));
+const Settings = lazy(() => import('./pages/settings/Settings.jsx'));
+const UserManagement = lazy(() => import('./pages/users/UserManagement.jsx'));
+
+// Loading component for Suspense
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    <span className="ml-3 text-gray-600 dark:text-gray-400">Loading...</span>
+  </div>
+);
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -58,41 +63,42 @@ function App() {
   return (
     <AuthProvider>
       <SocketProvider>
-        <Routes>
-        {/* Public Home Route */}
-        <Route path="/home" element={<Home />} />
-        
-        {/* Auth Routes */}
-        <Route element={<AuthLayout />}>
-          <Route path="/auth/login" element={<Login />} />
-          <Route path="/auth/register" element={<Register />} />
-          <Route path="/auth/forgot-password" element={<ForgotPassword />} />
-          <Route path="/auth/reset-password/:resettoken" element={<ResetPassword />} />
-        </Route>
-
-        {/* Protected Routes */}
-        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route path="/dashboard" element={<Dashboard />} />
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+          {/* Public Home Route */}
+          <Route path="/home" element={<Home />} />
           
-          {/* Projects */}
-          <Route path="/projects" element={<ProjectsList />} />
-          <Route path="/projects/:id" element={<ProjectDetails />} />
-          <Route 
-            path="/projects/create" 
-            element={
-              <RoleBasedRoute allowedRoles={['admin', 'user']}>
-                <CreateProject />
-              </RoleBasedRoute>
-            } 
-          />
-          <Route 
-            path="/projects/:id/edit" 
-            element={
-              <RoleBasedRoute allowedRoles={['admin', 'user']}>
-                <EditProject />
-              </RoleBasedRoute>
-            } 
-          />
+          {/* Auth Routes */}
+          <Route element={<AuthLayout />}>
+            <Route path="/auth/login" element={<Login />} />
+            <Route path="/auth/register" element={<Register />} />
+            <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+            <Route path="/auth/reset-password/:resettoken" element={<ResetPassword />} />
+          </Route>
+
+          {/* Protected Routes */}
+          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            
+            {/* Projects */}
+            <Route path="/projects" element={<ProjectsList />} />
+            <Route path="/projects/:id" element={<ProjectDetails />} />
+            <Route 
+              path="/projects/create" 
+              element={
+                <RoleBasedRoute allowedRoles={['admin', 'user']}>
+                  <CreateProject />
+                </RoleBasedRoute>
+              } 
+            />
+            <Route 
+              path="/projects/:id/edit" 
+              element={
+                <RoleBasedRoute allowedRoles={['admin', 'user']}>
+                  <EditProject />
+                </RoleBasedRoute>
+              } 
+            />
           
           {/* Tasks */}
           <Route path="/tasks" element={<MyTasks />} />
@@ -121,6 +127,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
+      </Suspense>
       </SocketProvider>
     </AuthProvider>
   );
