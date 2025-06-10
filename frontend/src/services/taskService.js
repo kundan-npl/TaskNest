@@ -11,10 +11,23 @@ const taskService = {
     }
   },
 
-  // Get a single task by ID
-  getTaskById: async (id) => {
+  // Get a single task by ID (updated: requires projectId)
+  getTaskById: async (projectId, id) => {
+    console.log('[taskService.getTaskById] called with:', { projectId, id, typeofId: typeof id });
     try {
-      const response = await api.get(`/tasks/${id}`);
+      const response = await api.get(`/projects/${projectId}/tasks/${id}`);
+      return response.data.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to fetch task');
+    }
+  },
+
+  // Fallback: Get a single task by ID only (no projectId)
+  getTaskByIdSimple: async (id) => {
+    console.log('[taskService.getTaskByIdSimple] called with:', { id, typeofId: typeof id });
+    try {
+      // Use the new /simple endpoint for mapped fields
+      const response = await api.get(`/tasks/${id}/simple`);
       return response.data.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to fetch task');
@@ -41,20 +54,20 @@ const taskService = {
     }
   },
 
-  // Delete a task
-  deleteTask: async (id) => {
+  // Delete a task (updated: requires projectId)
+  deleteTask: async (projectId, id) => {
     try {
-      const response = await api.delete(`/tasks/${id}`);
+      const response = await api.delete(`/projects/${projectId}/tasks/${id}`);
       return response.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to delete task');
     }
   },
 
-  // Update task status
-  updateTaskStatus: async (id, status) => {
+  // Update task status (updated: requires projectId)
+  updateTaskStatus: async (projectId, id, status) => {
     try {
-      const response = await api.put(`/tasks/${id}/status`, { status });
+      const response = await api.put(`/projects/${projectId}/tasks/${id}/status`, { status });
       return response.data.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to update task status');
@@ -81,20 +94,20 @@ const taskService = {
     }
   },
 
-  // Add comment to task
-  addTaskComment: async (taskId, comment) => {
+  // Add comment to task (now uses /tasks/:id/comments)
+  addTaskComment: async (id, comment) => {
     try {
-      const response = await api.post(`/tasks/${taskId}/comments`, { content: comment });
+      const response = await api.post(`/tasks/${id}/comments`, { content: comment });
       return response.data.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to add comment');
     }
   },
 
-  // Get task comments
-  getTaskComments: async (taskId) => {
+  // Get task comments (now uses /tasks/:id/comments)
+  getTaskComments: async (id) => {
     try {
-      const response = await api.get(`/tasks/${taskId}/comments`);
+      const response = await api.get(`/tasks/${id}/comments`);
       return response.data.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to fetch comments');

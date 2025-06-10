@@ -380,7 +380,7 @@ exports.uploadTaskAttachment = async (req, res, next) => {
  */
 exports.addComment = async (req, res, next) => {
   try {
-    const { projectId, id } = req.params;
+    const { id } = req.params; // Only use id
     const { content } = req.body;
 
     if (!content || content.trim() === '') {
@@ -390,8 +390,7 @@ exports.addComment = async (req, res, next) => {
       });
     }
 
-    const task = await Task.findOne({ _id: id, project: projectId });
-    
+    const task = await Task.findById(id); // Find by id only
     if (!task) {
       return res.status(404).json({
         success: false,
@@ -399,30 +398,60 @@ exports.addComment = async (req, res, next) => {
       });
     }
 
-    // Check if user has access to the project
-    const project = await Project.findById(projectId);
-    const userMember = getUserProjectRole(project, req.user.id);
-    
-    if (!userMember) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. You are not a member of this project.'
-      });
-    }
-
-    // Add comment
+    // Debug: log before and after
+    console.log('Before push, comments.length:', task.comments.length);
     task.comments.push({
       content: content.trim(),
       author: req.user.id,
       createdAt: new Date()
     });
+    console.log('After push, comments.length:', task.comments.length);
 
-    await task.save();
+    try {
+      await task.save();
+      console.log('Task saved successfully, comments now:', task.comments.length);
+    } catch (saveErr) {
+      console.error('Error saving task with new comment:', saveErr);
+      return res.status(500).json({ success: false, error: 'Failed to save comment' });
+    }
+
     await task.populate('comments.author', 'name email');
 
     res.status(201).json({
       success: true,
       data: task
+    });
+  } catch (error) {
+    console.error('addComment error:', error);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get comments for a task
+ * @route   GET /api/v1/tasks/:id/comments
+ * @access  Private
+ */
+exports.getTaskComments = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const task = await Task.findById(id).populate('comments.author', 'name email profileImage');
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+    res.status(200).json({
+      success: true,
+      data: (task.comments || []).map(comment => ({
+        _id: comment._id,
+        content: comment.content,
+        author: comment.author ? {
+          _id: comment.author._id,
+          name: comment.author.name,
+          avatar: comment.author.profileImage || '',
+          email: comment.author.email
+        } : null,
+        createdAt: comment.createdAt
+      }))
     });
   } catch (error) {
     next(error);
@@ -1038,6 +1067,77 @@ exports.searchTasks = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: tasks
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get a single task by ID only (no projectId) for /api/v1/tasks/:id/simple
+exports.getTaskByIdSimple = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    // Find the task and populate references
+    const task = await Task.findById(id)
+      .populate('assignedTo.user', 'name email profileImage')
+      .populate('createdBy', 'name email profileImage')
+      .populate('project', 'title');
+
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    // Flatten assignedTo (take first user or null)
+    let assignedToUser = null;
+    if (Array.isArray(task.assignedTo) && task.assignedTo.length > 0) {
+      assignedToUser = task.assignedTo[0].user;
+    }
+
+    // Map status to frontend expected values
+    let status = task.status;
+    if (status === 'todo') status = 'not-started';
+    if (status === 'in-progress') status = 'in-progress';
+    if (status === 'done') status = 'completed';
+    if (status === 'review') status = 'on-hold';
+
+    // Compose response
+    res.status(200).json({
+      success: true,
+      data: {
+        _id: task._id,
+        title: task.title,
+        description: task.description,
+        status,
+        priority: task.priority,
+        assignedTo: assignedToUser ? {
+          _id: assignedToUser._id,
+          name: assignedToUser.name,
+          avatar: assignedToUser.profileImage || '',
+        } : null,
+        createdBy: task.createdBy ? {
+          _id: task.createdBy._id,
+          name: task.createdBy.name,
+          avatar: task.createdBy.profileImage || '',
+        } : null,
+        projectId: task.project?._id,
+        projectName: task.project?.title,
+        dueDate: task.dueDate,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        subtasks: task.subtasks || [],
+        attachments: task.attachments || [],
+        comments: (task.comments || []).map(comment => ({
+          _id: comment._id,
+          content: comment.content,
+          author: comment.author ? {
+            _id: comment.author._id,
+            name: comment.author.name,
+            avatar: comment.author.profileImage || '',
+            email: comment.author.email
+          } : null,
+          createdAt: comment.createdAt
+        }))
+      }
     });
   } catch (error) {
     next(error);

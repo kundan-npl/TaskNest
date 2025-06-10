@@ -63,10 +63,26 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting (per user account if authenticated, else per IP)
+const isProduction = process.env.NODE_ENV === 'production';
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: isProduction ? 500 : 2000, // 500 per 10 min in prod, 2000 in dev
+  keyGenerator: (req) => {
+    // Use user ID if authenticated, else fallback to IP
+    if (req.user && req.user.id) {
+      return `user:${req.user.id}`;
+    }
+    return `ip:${req.ip}`;
+  },
+  handler: (req, res, next) => {
+    const key = req.user && req.user.id ? `user:${req.user.id}` : `ip:${req.ip}`;
+    console.warn(`Rate limit exceeded for ${key} on ${req.originalUrl}`);
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many requests, please try again later.'
+    });
+  }
 });
 
 app.use(limiter);

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext.jsx';
+import projectService from '../../services/projectService';
 import taskService from '../../services/taskService';
 import TaskStatsDashboard from '../../components/tasks/TaskStatsDashboard.jsx';
 import TaskFilters from '../../components/tasks/TaskFilters.jsx';
@@ -36,142 +37,41 @@ const MyTasks = () => {
   // Fetch tasks on component mount
   useEffect(() => {
     fetchTasks();
-  }, []);
+  }, [currentUser]);
 
   const fetchTasks = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // In a real implementation, we would fetch user's tasks from API
-      // const userTasks = await taskService.getUserTasks(currentUser.id);
+      // 1. Fetch all projects for the user
+      const projects = await projectService.getAllProjects();
+      if (!projects || projects.length === 0) {
+        setTasks([]);
+        setLoading(false);
+        return;
+      }
       
-      // For now, let's use comprehensive mock data
-      const mockTasks = [
-        {
-          id: '1',
-          title: 'Implement User Authentication System',
-          description: 'Design and implement JWT-based authentication with role-based access control',
-          status: 'in-progress',
-          priority: 'high',
-          dueDate: '2025-05-15',
-          createdAt: '2025-04-10',
-          projectId: '1',
-          projectName: 'TaskNest Frontend Development',
-          assignedTo: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-          createdBy: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' },
-          subtasks: [
-            { id: '1', title: 'Design login form', completed: true },
-            { id: '2', title: 'Implement JWT validation', completed: true },
-            { id: '3', title: 'Add role-based routing', completed: false },
-            { id: '4', title: 'Write authentication tests', completed: false }
-          ],
-          tags: ['authentication', 'security', 'frontend']
-        },
-        {
-          id: '2',
-          title: 'Create Task Dashboard UI',
-          description: 'Build responsive dashboard with drag-and-drop task management',
-          status: 'not-started',
-          priority: 'medium',
-          dueDate: '2025-05-20',
-          createdAt: '2025-04-12',
-          projectId: '1',
-          projectName: 'TaskNest Frontend Development',
-          assignedTo: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-          createdBy: { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' },
-          subtasks: [
-            { id: '1', title: 'Design wireframes', completed: false },
-            { id: '2', title: 'Implement drag and drop', completed: false },
-            { id: '3', title: 'Add task filtering', completed: false }
-          ],
-          tags: ['ui', 'dashboard', 'react']
-        },
-        {
-          id: '3',
-          title: 'API Endpoint Testing',
-          description: 'Write comprehensive test suite for all API endpoints',
-          status: 'completed',
-          priority: 'high',
-          dueDate: '2025-04-30',
-          createdAt: '2025-04-08',
-          projectId: '2',
-          projectName: 'TaskNest Backend API',
-          assignedTo: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-          createdBy: { id: '4', name: 'Kundan Kumar', avatar: 'https://i.pravatar.cc/150?img=4' },
-          subtasks: [
-            { id: '1', title: 'Test auth endpoints', completed: true },
-            { id: '2', title: 'Test project endpoints', completed: true },
-            { id: '3', title: 'Test task endpoints', completed: true },
-            { id: '4', title: 'Performance testing', completed: true }
-          ],
-          tags: ['testing', 'api', 'backend']
-        },
-        {
-          id: '4',
-          title: 'Database Schema Optimization',
-          description: 'Optimize MongoDB queries and add proper indexing',
-          status: 'on-hold',
-          priority: 'low',
-          dueDate: '2025-06-01',
-          createdAt: '2025-04-15',
-          projectId: '2',
-          projectName: 'TaskNest Backend API',
-          assignedTo: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-          createdBy: { id: '4', name: 'Kundan Kumar', avatar: 'https://i.pravatar.cc/150?img=4' },
-          subtasks: [
-            { id: '1', title: 'Analyze current queries', completed: true },
-            { id: '2', title: 'Add database indexes', completed: false },
-            { id: '3', title: 'Optimize aggregation pipelines', completed: false }
-          ],
-          tags: ['database', 'optimization', 'mongodb']
-        },
-        {
-          id: '5',
-          title: 'Mobile App UI Design',
-          description: 'Create mobile-responsive design for TaskNest mobile app',
-          status: 'in-progress',
-          priority: 'medium',
-          dueDate: '2025-05-25',
-          createdAt: '2025-04-18',
-          projectId: '3',
-          projectName: 'TaskNest Mobile App',
-          assignedTo: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-          createdBy: { id: '2', name: 'Jane Smith', avatar: 'https://i.pravatar.cc/150?img=2' },
-          subtasks: [
-            { id: '1', title: 'Design home screen', completed: true },
-            { id: '2', title: 'Design task list screen', completed: true },
-            { id: '3', title: 'Design settings screen', completed: false },
-            { id: '4', title: 'Create design system', completed: false }
-          ],
-          tags: ['mobile', 'ui', 'design']
-        },
-        {
-          id: '6',
-          title: 'Setup CI/CD Pipeline',
-          description: 'Configure automated testing and deployment pipeline',
-          status: 'in-progress',
-          priority: 'high',
-          dueDate: '2025-05-10', // Overdue
-          createdAt: '2025-04-05',
-          projectId: '2',
-          projectName: 'TaskNest Backend API',
-          assignedTo: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
-          createdBy: { id: '4', name: 'Kundan Kumar', avatar: 'https://i.pravatar.cc/150?img=4' },
-          subtasks: [
-            { id: '1', title: 'Setup GitHub Actions', completed: true },
-            { id: '2', title: 'Configure test automation', completed: true },
-            { id: '3', title: 'Setup staging deployment', completed: false },
-            { id: '4', title: 'Setup production deployment', completed: false }
-          ],
-          tags: ['devops', 'ci/cd', 'automation']
+      // 2. For each project, fetch its tasks
+      const allTasks = [];
+      for (const project of projects) {
+        try {
+          const projectTasks = await taskService.getProjectTasks(project._id);
+          if (Array.isArray(projectTasks)) {
+            // 3. Filter for tasks assigned to the current user (fix: use assignedTo array)
+            const myTasks = projectTasks.filter(
+              (task) => Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id)
+            );
+            allTasks.push(...myTasks);
+          }
+        } catch (err) {
+          // Optionally handle per-project errors
+          continue;
         }
-      ];
-
-      setTasks(mockTasks);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      setError(error.message || 'Failed to fetch tasks');
-      toast.error('Failed to load tasks');
+      }
+      setTasks(allTasks);
+    } catch (err) {
+      setError('Failed to load tasks.');
     } finally {
       setLoading(false);
     }
@@ -391,6 +291,28 @@ const MyTasks = () => {
                 </svg>
                 Try Again
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No tasks assigned to you</h3>
+              <p className="text-gray-600">You have no tasks across all projects</p>
+              <Link 
+                to="/projects" 
+                className="mt-4 inline-flex items-center px-4 py-2 bg-primary-600 border border-transparent rounded-lg text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+              >
+                <PlusIcon className="w-4 h-4 mr-2" />
+                Create New Task
+              </Link>
             </div>
           </div>
         </div>
