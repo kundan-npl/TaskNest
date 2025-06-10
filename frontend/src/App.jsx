@@ -15,6 +15,7 @@ import Login from './pages/auth/Login.jsx';
 import Register from './pages/auth/Register.jsx';
 import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 import ResetPassword from './pages/auth/ResetPassword.jsx';
+import AcceptInvitation from './pages/auth/AcceptInvitation.jsx';
 
 // Protected route component
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
@@ -75,6 +76,9 @@ function App() {
             <Route path="/auth/forgot-password" element={<ForgotPassword />} />
             <Route path="/auth/reset-password/:resettoken" element={<ResetPassword />} />
           </Route>
+
+          {/* Public invitation acceptance route */}
+          <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>

@@ -12,11 +12,19 @@ const {
   getProjectAnalytics,
   updateProjectStatus,
   inviteMember,
-  getProjectActivity
+  acceptInvitation,
+  getPendingInvitations,
+  cancelInvitation,
+  getProjectActivity,
+  getTeamStats,
+  getProjectMembers
 } = require('../controllers/project.controller');
 const { protect } = require('../middleware/auth/auth');
 
-// Apply protection to all routes
+// Public routes (no authentication required)
+router.post('/accept-invitation/:token', acceptInvitation);
+
+// Apply protection to all other routes
 router.use(protect);
 
 // Task routes
@@ -68,13 +76,19 @@ router.route('/:id')
 
 // Enhanced project routes for widgets
 router.get('/:id/analytics', getProjectAnalytics);
+router.get('/:id/team/stats', getTeamStats);
 router.put('/:id/status', updateProjectStatus);
 router.get('/:id/activity', getProjectActivity);
 
 // Member management routes
+router.get('/:id/members', getProjectMembers);
 router.post('/:id/members', addMember);
 router.post('/:id/invite', inviteMember);
 router.put('/:id/members/:memberId', updateMemberRole);
 router.delete('/:id/members/:memberId', removeMember);
+
+// Invitation management routes
+router.get('/:id/pending-invitations', getPendingInvitations);
+router.delete('/:id/invitations/:invitationId', cancelInvitation);
 
 module.exports = router;

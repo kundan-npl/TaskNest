@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import projectService from '../../../services/projectService';
 import { formatDistanceToNow } from '../../../utils/dateUtils';
@@ -19,13 +19,7 @@ const NotificationWidget = ({
   const [filter, setFilter] = useState('all'); // 'all', 'unread', 'high', 'medium', 'low'
   const [showPreferences, setShowPreferences] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({
-    total: 0,
-    unread: 0,
-    high: 0,
-    medium: 0,
-    low: 0
-  });
+  const [apiCallsInProgress, setApiCallsInProgress] = useState(new Set());
   const [preferences, setPreferences] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -40,70 +34,8 @@ const NotificationWidget = ({
     quietEnd: '08:00'
   });
 
-  const { socket, isConnected, notifications: socketNotifications } = useSocket();
-
-  // Update local state when props change
-  useEffect(() => {
-    setNotifications(propNotifications);
-    updateStats(propNotifications);
-  }, [propNotifications]);
-
-  // Load project notifications
-  useEffect(() => {
-    if (project?._id || project?.id) {
-      loadProjectNotifications();
-      loadNotificationStats();
-      loadNotificationPreferences();
-    }
-  }, [project?._id, project?.id]);
-
-  // Real-time notification updates via Socket.IO
-  useEffect(() => {
-    const handleNewNotification = (event) => {
-      const { notification, projectId } = event.detail;
-      
-      // Only add if it's for the current project or global
-      if (!projectId || projectId === (project?._id || project?.id)) {
-        setNotifications(prev => {
-          const newList = [notification, ...prev];
-          updateStats(newList);
-          return newList;
-        });
-        
-        // Show toast for important notifications
-        if (notification.priority === 'high') {
-          toast.warning(notification.message);
-        }
-      }
-    };
-
-    // Listen for notifications via custom events from SocketContext
-    window.addEventListener('notification', handleNewNotification);
-
-    return () => {
-      window.removeEventListener('notification', handleNewNotification);
-    };
-  }, [project?._id, project?.id, notifications]);
-
-  // Sync with socket notifications from context
-  useEffect(() => {
-    if (socketNotifications && socketNotifications.length > 0) {
-      // Filter for project-specific notifications
-      const projectNotifications = socketNotifications.filter(n => 
-        !n.projectId || n.projectId === (project?._id || project?.id)
-      );
-      
-      if (projectNotifications.length > 0) {
-        setNotifications(prev => {
-          const existingIds = prev.map(n => n._id);
-          const newNotifications = projectNotifications.filter(n => !existingIds.includes(n._id));
-          return [...newNotifications, ...prev];
-        });
-      }
-    }
-  }, [socketNotifications, project?._id, project?.id]);
-
-  const loadProjectNotifications = async () => {
+  const { socket, isConnected, notifications: socketNotifications, setNotifications: setContextNotifications } = useSocket();  // Load project notifications with debouncing
+  const loadProjectNotifications = useCallback(async () => {
     if (!project?._id && !project?.id) return;
     
     try {
@@ -111,11 +43,17 @@ const NotificationWidget = ({
       const response = await projectService.getProjectNotifications(project._id || project.id);
       if (response.success) {
         setNotifications(response.data || []);
-        updateStats(response.data || []);
+        if (setContextNotifications) setContextNotifications(response.data || []); // keep context in sync
       }
     } catch (error) {
       console.error('Failed to load notifications:', error);
-      // Fallback to mock data
+      // Check if it's a rate limit error (429)
+      if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+        console.warn('Rate limited, using fallback data');
+        // Don't show error toast for rate limiting - just use existing data
+        return;
+      }
+      // Fallback to mock data for other errors
       const mockNotifications = [
         {
           id: 1,
@@ -149,46 +87,122 @@ const NotificationWidget = ({
         }
       ];
       setNotifications(mockNotifications);
-      updateStats(mockNotifications);
+      if (setContextNotifications) setContextNotifications(mockNotifications);
     } finally {
       setLoading(false);
     }
-  };
+  }, [project?._id, project?.id, setContextNotifications]);
 
-  const loadNotificationStats = async () => {
+  const loadNotificationStats = useCallback(async () => {
     if (!project?._id && !project?.id) return;
     
     try {
       const response = await projectService.getProjectNotificationStats(project._id || project.id);
       if (response.success) {
-        setStats(response.data);
+        // Don't set stats here since we're using computed stats
+        // setStats(response.data);
       }
     } catch (error) {
       console.error('Failed to load notification stats:', error);
+      // Don't show error for rate limiting
+      if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+        return;
+      }
     }
-  };
+  }, [project?._id, project?.id]);
 
-  const loadNotificationPreferences = async () => {
+  const loadNotificationPreferences = useCallback(async () => {
     try {
+      if (!project?._id && !project?.id) return;
       const response = await projectService.getProjectNotificationPreferences(project._id || project.id);
       if (response.success) {
         setPreferences(prev => ({ ...prev, ...response.data }));
       }
     } catch (error) {
       console.error('Failed to load notification preferences:', error);
+      // Don't show error for rate limiting
+      if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+        return;
+      }
     }
-  };
+  }, [project?._id, project?.id]);
 
-  const updateStats = (notificationList) => {
-    const stats = {
-      total: notificationList.length,
-      unread: notificationList.filter(n => !n.isRead).length,
-      high: notificationList.filter(n => n.priority === 'high').length,
-      medium: notificationList.filter(n => n.priority === 'medium').length,
-      low: notificationList.filter(n => n.priority === 'low').length
+  // Update local state from props only when project changes (prevents feedback loop)
+  useEffect(() => {
+    setNotifications(propNotifications);
+  }, [project?._id, project?.id]);
+
+  // Load project notifications with debouncing to prevent rate limiting
+  useEffect(() => {
+    let timeoutId;
+    // Only run if project id is available
+    if (project?._id || project?.id) {
+      timeoutId = setTimeout(() => {
+        // Use functional updates to avoid stale closures and infinite loops
+        loadProjectNotifications();
+        loadNotificationStats();
+        loadNotificationPreferences();
+      }, 300);
+    }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
     };
-    setStats(stats);
-  };
+    // Only run when project id changes, not on every render or loader recreation
+  }, [project?._id, project?.id]);
+
+  // Calculate stats directly using useMemo to prevent unnecessary recalculations
+  const stats = useMemo(() => ({
+    total: notifications.length,
+    unread: notifications.filter(n => !n.isRead).length,
+    high: notifications.filter(n => n.priority === 'high').length,
+    medium: notifications.filter(n => n.priority === 'medium').length,
+    low: notifications.filter(n => n.priority === 'low').length
+  }), [notifications]);
+
+  // Real-time notification updates via Socket.IO
+  useEffect(() => {
+    const handleNewNotification = (event) => {
+      const { notification, projectId } = event.detail;
+      
+      // Only add if it's for the current project or global
+      if (!projectId || projectId === (project?._id || project?.id)) {
+        setNotifications(prev => [notification, ...prev]);
+        
+        // Show toast for important notifications
+        if (notification.priority === 'high') {
+          toast.warning(notification.message);
+        }
+      }
+    };
+
+    // Listen for notifications via custom events from SocketContext
+    window.addEventListener('notification', handleNewNotification);
+
+    return () => {
+      window.removeEventListener('notification', handleNewNotification);
+    };
+  }, [project?._id, project?.id]); // Removed notifications dependency to prevent infinite loop
+
+  // Sync with socket notifications from context
+  useEffect(() => {
+    if (socketNotifications && socketNotifications.length > 0) {
+      // Filter for project-specific notifications
+      const projectNotifications = socketNotifications.filter(n =>
+        !n.projectId || n.projectId === (project?._id || project?.id)
+      );
+      
+      if (projectNotifications.length > 0) {
+        setNotifications(prev => {
+          const existingIds = prev.map(n => n._id);
+          const newNotifications = projectNotifications.filter(n => !existingIds.includes(n._id));
+          if (newNotifications.length > 0) {
+            return [...newNotifications, ...prev];
+          }
+          return prev;
+        });
+      }
+    }
+  }, [socketNotifications, project?._id, project?.id]);
 
   const handleMarkAsRead = async (notificationId) => {
     try {
@@ -198,10 +212,9 @@ const NotificationWidget = ({
       );
       
       if (response.success) {
-        setNotifications(prev => 
-          prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
-        );
-        updateStats(notifications.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
+        setNotifications(prev => {
+          return prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n);
+        });
         onMarkAsRead?.(notificationId);
         toast.success('Notification marked as read');
       }
@@ -220,8 +233,9 @@ const NotificationWidget = ({
       );
       
       if (response.success) {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        updateStats(notifications.map(n => ({ ...n, isRead: true })));
+        setNotifications(prev => {
+          return prev.map(n => ({ ...n, isRead: true }));
+        });
         onMarkAllAsRead?.();
         toast.success('All notifications marked as read');
       }
@@ -234,8 +248,9 @@ const NotificationWidget = ({
   const handleDeleteNotification = async (notificationId) => {
     try {
       // Note: You might want to add a delete API endpoint
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      updateStats(notifications.filter(n => n.id !== notificationId));
+      setNotifications(prev => {
+        return prev.filter(n => n.id !== notificationId);
+      });
       onDeleteNotification?.(notificationId);
       toast.success('Notification deleted');
     } catch (error) {
@@ -262,6 +277,11 @@ const NotificationWidget = ({
     }
   };
 
+  const handleSavePreferences = async () => {
+    await handleUpdatePreferences(preferences);
+    setShowPreferences(false);
+  };
+
   const filteredNotifications = notifications.filter(notification => {
     if (filter === 'all') return true;
     if (filter === 'unread') return !notification.isRead;
@@ -269,13 +289,15 @@ const NotificationWidget = ({
   });
 
   const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
     const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return '';
+    // Show time in HH:mm format if today, else show date
     const now = new Date();
-    const diff = now - date;
-    
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    const isToday = date.toDateString() === now.toDateString();
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
     return date.toLocaleDateString();
   };
 
@@ -462,7 +484,7 @@ const NotificationWidget = ({
                     
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs text-gray-400">
-                        {formatDistanceToNow(new Date(notification.timestamp))} ago
+                        {formatTimestamp(notification.createdAt)}
                       </span>
                       
                       <div className="flex items-center space-x-2">

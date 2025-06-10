@@ -82,12 +82,22 @@ export const SocketProvider = ({ children }) => {
     });
 
     // Real-time event handlers
-    newSocket.on('notification', (notification) => {
+    newSocket.on('new_notification', (notification) => {
       setNotifications(prev => [notification, ...prev]);
-      
+      window.dispatchEvent(new CustomEvent('notification', { detail: { notification, projectId: notification.projectId } }));
       // Show browser notification if permission granted
       if (Notification.permission === 'granted') {
         new Notification(notification.title || 'New Notification', {
+          body: notification.message,
+          icon: '/favicon.ico'
+        });
+      }
+    });
+    newSocket.on('project_notification', (notification) => {
+      setNotifications(prev => [notification, ...prev]);
+      window.dispatchEvent(new CustomEvent('notification', { detail: { notification, projectId: notification.projectId } }));
+      if (Notification.permission === 'granted') {
+        new Notification(notification.title || 'Project Notification', {
           body: notification.message,
           icon: '/favicon.ico'
         });
@@ -347,6 +357,7 @@ export const SocketProvider = ({ children }) => {
     isConnected,
     onlineUsers,
     notifications,
+    setNotifications, // <-- add this
     typingUsers,
     dashboardData,
     lastDashboardUpdate,

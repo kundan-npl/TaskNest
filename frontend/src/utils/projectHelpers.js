@@ -71,7 +71,33 @@ export const ROLE_PERMISSIONS = {
     canViewFinancials: true,
     canModerateDiscussions: true,
     canPinMessages: true,
-    canCreateAnnouncements: true
+    canCreateAnnouncements: true,
+    canSendMessage: true,
+    canCreateDiscussion: true,
+    canViewDiscussions: true
+  },
+  'team-lead': {
+    canEditProject: false,
+    canDeleteProject: false,
+    canManageTeam: true,
+    canAssignTasks: true,
+    canEditTasks: true,
+    canDeleteTasks: false,
+    canViewAnalytics: true,
+    canExportReports: true,
+    canManageFiles: true,
+    canViewAllTasks: true,
+    canCreateTasks: true,
+    canManageRoles: false,
+    canInviteMembers: true,
+    canRemoveMembers: false,
+    canViewFinancials: false,
+    canModerateDiscussions: true,
+    canPinMessages: true,
+    canCreateAnnouncements: false,
+    canSendMessage: true,
+    canCreateDiscussion: true,
+    canViewDiscussions: true
   },
   teamLead: {
     canEditProject: false,
@@ -91,7 +117,33 @@ export const ROLE_PERMISSIONS = {
     canViewFinancials: false,
     canModerateDiscussions: true,
     canPinMessages: true,
-    canCreateAnnouncements: false
+    canCreateAnnouncements: false,
+    canSendMessage: true,
+    canCreateDiscussion: true,
+    canViewDiscussions: true
+  },
+  'team-member': {
+    canEditProject: false,
+    canDeleteProject: false,
+    canManageTeam: false,
+    canAssignTasks: false,
+    canEditTasks: true,
+    canDeleteTasks: false,
+    canViewAnalytics: false,
+    canExportReports: false,
+    canManageFiles: true,
+    canViewAllTasks: true,
+    canCreateTasks: true,
+    canManageRoles: false,
+    canInviteMembers: false,
+    canRemoveMembers: false,
+    canViewFinancials: false,
+    canModerateDiscussions: false,
+    canPinMessages: false,
+    canCreateAnnouncements: false,
+    canSendMessage: true,
+    canCreateDiscussion: true,
+    canViewDiscussions: true
   },
   teamMember: {
     canEditProject: false,
@@ -111,20 +163,42 @@ export const ROLE_PERMISSIONS = {
     canViewFinancials: false,
     canModerateDiscussions: false,
     canPinMessages: false,
-    canCreateAnnouncements: false
+    canCreateAnnouncements: false,
+    canSendMessage: true,
+    canCreateDiscussion: true,
+    canViewDiscussions: true
   }
 };
 
 // Permission checking utilities
 export const getUserRole = (project, currentUser) => {
-  if (!project || !currentUser) return 'teamMember';
-  const member = project.members?.find(m => 
-    m.user._id === currentUser._id || m.user._id === currentUser.id
-  );
-  return member ? member.role : 'teamMember';
+  if (!project || !currentUser) return 'team-member';
+  const member = project.members?.find(m => {
+    const memberUserId = m.user._id || m.user.id || m.user;
+    const currentUserId = currentUser._id || currentUser.id;
+    return memberUserId === currentUserId;
+  });
+  return member ? member.role : 'team-member';
 };
 
 export const hasPermission = (project, currentUser, permission) => {
   const userRole = getUserRole(project, currentUser);
   return ROLE_PERMISSIONS[userRole]?.[permission] || false;
+};
+
+// Get user permissions based on role or direct permission object
+export const getPermissions = (roleOrProject, currentUser) => {
+  // If first parameter is a string (role), return permissions for that role
+  if (typeof roleOrProject === 'string') {
+    return ROLE_PERMISSIONS[roleOrProject] || ROLE_PERMISSIONS['team-member'];
+  }
+  
+  // If first parameter is a project object, get user's role and return permissions
+  if (roleOrProject && currentUser) {
+    const userRole = getUserRole(roleOrProject, currentUser);
+    return ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS['team-member'];
+  }
+  
+  // Default fallback
+  return ROLE_PERMISSIONS['team-member'];
 };

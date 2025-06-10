@@ -20,7 +20,12 @@ const ProjectMemberSchema = new mongoose.Schema({
     canEditProject: { type: Boolean, default: false },
     canManageMembers: { type: Boolean, default: false },
     canDeleteProject: { type: Boolean, default: false },
-    canViewReports: { type: Boolean, default: true }
+    canViewReports: { type: Boolean, default: true },
+    canCreateTasks: { type: Boolean, default: false },
+    canEditTasks: { type: Boolean, default: false },
+    canManageFiles: { type: Boolean, default: false },
+    canInviteMembers: { type: Boolean, default: false },
+    canModerateDiscussions: { type: Boolean, default: false }
   }
 });
 
@@ -62,6 +67,40 @@ const ProjectSchema = new mongoose.Schema({
     required: true
   },
   members: [ProjectMemberSchema],
+  pendingInvitations: [{
+    email: {
+      type: String,
+      required: true,
+      lowercase: true
+    },
+    role: {
+      type: String,
+      enum: ['supervisor', 'team-lead', 'team-member'],
+      required: true
+    },
+    token: {
+      type: String,
+      required: true
+    },
+    invitedBy: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    invitedAt: {
+      type: Date,
+      default: Date.now
+    },
+    expiresAt: {
+      type: Date,
+      required: true
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'declined', 'expired'],
+      default: 'pending'
+    }
+  }],
   settings: {
     allowMemberInvite: { type: Boolean, default: false },
     requireApprovalForTasks: { type: Boolean, default: false },
@@ -106,16 +145,26 @@ ProjectMemberSchema.pre('save', function(next) {
         canEditProject: true,
         canManageMembers: true,
         canDeleteProject: true,
-        canViewReports: true
+        canViewReports: true,
+        canCreateTasks: true,
+        canEditTasks: true,
+        canManageFiles: true,
+        canInviteMembers: true,
+        canModerateDiscussions: true
       };
       break;
     case 'team-lead':
       this.permissions = {
         canAssignTasks: true,
         canEditProject: false,
-        canManageMembers: false,
+        canManageMembers: true, // Enhanced: Allow team leads to manage members
         canDeleteProject: false,
-        canViewReports: true
+        canViewReports: true,
+        canInviteMembers: true, // Enhanced: Allow team leads to invite members
+        canCreateTasks: true,
+        canEditTasks: true,
+        canManageFiles: true,
+        canModerateDiscussions: true
       };
       break;
     case 'team-member':
@@ -124,7 +173,11 @@ ProjectMemberSchema.pre('save', function(next) {
         canEditProject: false,
         canManageMembers: false,
         canDeleteProject: false,
-        canViewReports: true
+        canViewReports: true,
+        canCreateTasks: true, // Allow team members to create tasks
+        canEditTasks: true,
+        canManageFiles: false,
+        canModerateDiscussions: false
       };
       break;
   }

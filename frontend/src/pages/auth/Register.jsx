@@ -48,9 +48,9 @@ const Register = () => {
       setLoading(true);
       await register({ name, email, password });
       toast.success('Registration successful!');
-      navigate('/');
+      navigate('/dashboard'); // Redirect to dashboard
     } catch (error) {
-      toast.error(error.message || 'Registration failed. Please try again.');
+      toast.error(error.message || 'Registration failed. Please check your credentials or try again.');
     } finally {
       setLoading(false);
     }
@@ -144,7 +144,7 @@ const Register = () => {
       <div className="mt-6 text-center">
         <p className="text-sm text-gray-600">
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-500">Sign in</Link>
+          <Link to="/auth/login" className="font-medium text-primary-600 hover:text-primary-500">Sign in</Link>
         </p>
       </div>
     </div>

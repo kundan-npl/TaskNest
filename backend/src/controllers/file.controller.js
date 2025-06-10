@@ -187,7 +187,439 @@ const fileController = {
         error: 'Failed to list files'
       });
     }
+  },
+
+  /**
+   * @desc    Create a new folder
+   * @route   POST /api/v1/projects/:projectId/files/folders
+   * @access  Private
+   */
+  createFolder: async (req, res, next) => {
+    try {
+      const { projectId } = req.params;
+      const { name, parentId = null } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Folder name is required'
+        });
+      }
+
+      // Verify project access
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to access this project'
+        });
+      }
+
+      const folderData = {
+        name: name.trim(),
+        type: 'folder',
+        projectId,
+        parentId,
+        createdBy: req.user.id,
+        size: 0,
+        path: parentId ? `${parentId}/${name.trim()}` : name.trim()
+      };
+
+      const folder = await fileService.createFolder(folderData);
+
+      // Emit real-time update
+      const socketService = require('../services/socketService');
+      socketService.emitToProject(projectId, 'file:folder_created', {
+        folder,
+        createdBy: req.user.name,
+        timestamp: new Date()
+      });
+
+      res.status(201).json({
+        success: true,
+        data: folder
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * @desc    Get file versions
+   * @route   GET /api/v1/projects/:projectId/files/:fileId/versions
+   * @access  Private
+   */
+  getFileVersions: async (req, res, next) => {
+    try {
+      const { projectId, fileId } = req.params;
+
+      // Verify project access
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to access this project'
+        });
+      }
+
+      const versions = await fileService.getFileVersions(fileId);
+
+      res.json({
+        success: true,
+        data: versions
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * @desc    Add comment to file
+   * @route   POST /api/v1/projects/:projectId/files/:fileId/comments
+   * @access  Private
+   */
+  addFileComment: async (req, res, next) => {
+    try {
+      const { projectId, fileId } = req.params;
+      const { content } = req.body;
+
+      if (!content || !content.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Comment content is required'
+        });
+      }
+
+      // Verify project access
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to access this project'
+        });
+      }
+
+      const commentData = {
+        content: content.trim(),
+        author: req.user.id,
+        fileId,
+        createdAt: new Date()
+      };
+
+      const comment = await fileService.addFileComment(commentData);
+
+      // Emit real-time update
+      const socketService = require('../services/socketService');
+      socketService.emitToProject(projectId, 'file:comment_added', {
+        fileId,
+        comment,
+        author: req.user.name,
+        timestamp: new Date()
+      });
+
+      res.status(201).json({
+        success: true,
+        data: comment
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * @desc    Share file with specific permissions
+   * @route   POST /api/v1/projects/:projectId/files/:fileId/share
+   * @access  Private
+   */
+  shareFile: async (req, res, next) => {
+    try {
+      const { projectId, fileId } = req.params;
+      const { users, permissions = 'view', expiresAt } = req.body;
+
+      // Verify project access and permissions
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember || (!userMember.permissions?.canManageFiles && userMember.role === 'teamMember')) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to share files'
+        });
+      }
+
+      const shareData = {
+        fileId,
+        sharedBy: req.user.id,
+        users,
+        permissions,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        sharedAt: new Date()
+      };
+
+      const shareInfo = await fileService.shareFile(shareData);
+
+      // Create notifications for shared users
+      if (users && users.length > 0) {
+        const Notification = require('../models/notification.model');
+        const notifications = [];
+        
+        for (const userId of users) {
+          notifications.push({
+            title: 'File Shared',
+            message: `${req.user.name} shared a file with you in project "${project.title}"`,
+            type: 'system_announcement', // Using existing enum value
+            recipient: userId,
+            sender: req.user.id,
+            relatedProject: projectId,
+            actionUrl: `/projects/${projectId}/files`,
+            metadata: { 
+              fileId: fileId,
+              permissions: permissions 
+            }
+          });
+        }
+        
+        await Notification.insertMany(notifications);
+      }
+
+      // Emit real-time update
+      const socketService = require('../services/socketService');
+      socketService.emitToProject(projectId, 'file:shared', {
+        fileId,
+        shareInfo,
+        sharedBy: req.user.name,
+        timestamp: new Date()
+      });
+
+      res.status(201).json({
+        success: true,
+        data: shareInfo
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * @desc    Bulk delete files
+   * @route   DELETE /api/v1/projects/:projectId/files/bulk
+   * @access  Private
+   */
+  bulkDeleteFiles: async (req, res, next) => {
+    try {
+      const { projectId } = req.params;
+      const { fileIds } = req.body;
+
+      if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'File IDs array is required'
+        });
+      }
+
+      // Verify project access and permissions
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember || (!userMember.permissions?.canManageFiles && userMember.role === 'teamMember')) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to delete files'
+        });
+      }
+
+      const result = await fileService.bulkDeleteFiles(fileIds);
+
+      // Emit real-time update
+      const socketService = require('../services/socketService');
+      socketService.emitToProject(projectId, 'files:bulk_deleted', {
+        fileIds,
+        deletedCount: result.deletedCount,
+        deletedBy: req.user.name,
+        timestamp: new Date()
+      });
+
+      res.json({
+        success: true,
+        data: {
+          deletedCount: result.deletedCount,
+          message: `${result.deletedCount} files deleted successfully`
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * @desc    Get file analytics
+   * @route   GET /api/v1/projects/:projectId/files/analytics
+   * @access  Private
+   */
+  getFileAnalytics: async (req, res, next) => {
+    try {
+      const { projectId } = req.params;
+
+      // Verify project access
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to access this project'
+        });
+      }
+
+      const analytics = await fileService.getProjectFileAnalytics(projectId);
+
+      res.json({
+        success: true,
+        data: analytics
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * @desc    Search files
+   * @route   GET /api/v1/projects/:projectId/files/search
+   * @access  Private
+   */
+  searchFiles: async (req, res, next) => {
+    try {
+      const { projectId } = req.params;
+      const { q, type, size, dateRange } = req.query;
+
+      if (!q || !q.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Search query is required'
+        });
+      }
+
+      // Verify project access
+      const Project = require('../models/project.model');
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+
+      const userMember = project.members.find(member => {
+        const memberUserId = member.user._id || member.user;
+        return memberUserId.toString() === req.user.id;
+      });
+
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to access this project'
+        });
+      }
+
+      const searchOptions = {
+        projectId,
+        query: q.trim(),
+        type,
+        size,
+        dateRange: dateRange ? JSON.parse(dateRange) : null
+      };
+
+      const results = await fileService.searchFiles(searchOptions);
+
+      res.json({
+        success: true,
+        data: results
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 
-module.exports = fileController;
+module.exports = {
+  ...fileController,
+  createFolder: fileController.createFolder,
+  getFileVersions: fileController.getFileVersions,
+  addFileComment: fileController.addFileComment,
+  shareFile: fileController.shareFile,
+  bulkDeleteFiles: fileController.bulkDeleteFiles,
+  getFileAnalytics: fileController.getFileAnalytics,
+  searchFiles: fileController.searchFiles
+};

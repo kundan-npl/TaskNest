@@ -31,19 +31,17 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!email || !password) {
       toast.error('Please provide both email and password');
       return;
     }
-    
     try {
       setLoading(true);
       await login(email, password);
       toast.success('Login successful!');
-      navigate('/');
+      navigate('/dashboard'); // Redirect to dashboard
     } catch (error) {
-      toast.error(error.message || 'Login failed. Please try again.');
+      toast.error(error.message || 'Login failed. Please check your credentials or try again.');
     } finally {
       setLoading(false);
     }
@@ -212,7 +210,7 @@ const Login = () => {
       <div className="mt-6 text-center">
         <p className="text-sm text-gray-600">
           Don't have an account?{' '}
-          <Link to="/register" className="font-medium text-primary-600 hover:text-primary-500">
+          <Link to="/auth/register" className="font-medium text-primary-600 hover:text-primary-500">
             Sign up
           </Link>
         </p>

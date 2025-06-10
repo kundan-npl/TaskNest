@@ -106,9 +106,9 @@ const TaskManagementWidget = ({
   });
 
   const tasksByStatus = {
-    'not-started': filteredTasks.filter(t => t.status === 'not-started'),
-    'in-progress': filteredTasks.filter(t => t.status === 'in-progress'),
-    'completed': filteredTasks.filter(t => t.status === 'completed')
+    'not-started': filteredTasks.filter(t => t.status === 'not-started' || t.status === 'todo'),
+    'in-progress': filteredTasks.filter(t => ['in-progress', 'on-hold', 'in-review'].includes(t.status)),
+    'completed': filteredTasks.filter(t => t.status === 'completed' || t.status === 'done')
   };
 
   const handleTaskStatusChange = async (taskId, newStatus) => {
@@ -242,6 +242,7 @@ const TaskManagementWidget = ({
       case 'not-started': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
       case 'in-progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
+      case 'on-hold': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
   };
@@ -399,19 +400,18 @@ const TaskManagementWidget = ({
         {/* Task Board View */}
         {view === 'board' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(tasksByStatus).map(([status, statusTasks]) => (
+            {['not-started', 'in-progress', 'completed'].map(status => (
               <div
                 key={status}
                 className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4"
                 onDrop={(e) => handleDrop(e, status)}
                 onDragOver={(e) => e.preventDefault()}
               >
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3 capitalize">
-                  {status.replace('-', ' ')} ({statusTasks.length})
+                <h3 className="font-medium text-gray-900 dark:text-white mb-3">
+                  {status === 'not-started' ? 'Not Started' : status === 'in-progress' ? 'In Progress' : 'Completed'} ({tasksByStatus[status]?.length || 0})
                 </h3>
-                
                 <div className="space-y-3 min-h-[200px]">
-                  {statusTasks.map(task => (
+                  {(tasksByStatus[status] || []).map(task => (
                     <div
                       key={task._id}
                       draggable={permissions.canEdit}

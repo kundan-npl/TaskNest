@@ -133,10 +133,10 @@ exports.createTask = async (req, res, next) => {
       });
     }
     
-    // Supervisors and team-leads can create tasks, team-members need canAssignTasks permission
+    // Supervisors and team-leads can create tasks, team-members need canCreateTasks permission
     const canCreateTasks = userMember.role === 'supervisor' || 
                           userMember.role === 'team-lead' || 
-                          userMember.permissions.canAssignTasks;
+                          userMember.permissions.canCreateTasks;
     
     if (!canCreateTasks) {
       return res.status(403).json({
@@ -472,7 +472,7 @@ exports.updateTaskProgress = async (req, res, next) => {
 
     const canUpdateTasks = userMember.role === 'supervisor' || 
                           userMember.role === 'team-lead' || 
-                          userMember.permissions.canAssignTasks;
+                          userMember.permissions.canEditTasks;
 
     if (!isAssigned && !canUpdateTasks) {
       return res.status(403).json({
@@ -592,6 +592,452 @@ exports.assignTask = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: task
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Bulk update tasks
+ * @route   PUT /api/v1/tasks/bulk-update
+ * @access  Private
+ */
+exports.bulkUpdateTasks = async (req, res, next) => {
+  try {
+    const { taskIds, updates } = req.body;
+
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task IDs array is required'
+      });
+    }
+
+    // Find all tasks and verify permissions
+    const tasks = await Task.find({ _id: { $in: taskIds } }).populate('project');
+    
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No tasks found'
+      });
+    }
+
+    // Check permissions for each task's project
+    for (const task of tasks) {
+      const userMember = getUserProjectRole(task.project, req.user.id);
+      if (!userMember || !['supervisor', 'teamLead'].includes(userMember.role)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Insufficient permissions.'
+        });
+      }
+    }
+
+    // Perform bulk update
+    const result = await Task.updateMany(
+      { _id: { $in: taskIds } },
+      { $set: updates },
+      { new: true }
+    );
+
+    // Get updated tasks
+    const updatedTasks = await Task.find({ _id: { $in: taskIds } })
+      .populate('assignedTo.user', 'name email')
+      .populate('project', 'title');
+
+    // Emit real-time updates
+    updatedTasks.forEach(task => {
+      socketService.emitToProject(task.project._id.toString(), 'task:bulk_updated', {
+        task: task,
+        updatedBy: req.user.id
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        modifiedCount: result.modifiedCount,
+        tasks: updatedTasks
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Bulk delete tasks
+ * @route   DELETE /api/v1/tasks/bulk-delete
+ * @access  Private
+ */
+exports.bulkDeleteTasks = async (req, res, next) => {
+  try {
+    const { taskIds } = req.body;
+
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task IDs array is required'
+      });
+    }
+
+    // Find all tasks and verify permissions
+    const tasks = await Task.find({ _id: { $in: taskIds } }).populate('project');
+    
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No tasks found'
+      });
+    }
+
+    // Check permissions for each task's project
+    for (const task of tasks) {
+      const userMember = getUserProjectRole(task.project, req.user.id);
+      if (!userMember || !['supervisor', 'teamLead'].includes(userMember.role)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Insufficient permissions.'
+        });
+      }
+    }
+
+    // Delete tasks
+    const result = await Task.deleteMany({ _id: { $in: taskIds } });
+
+    // Emit real-time updates
+    tasks.forEach(task => {
+      socketService.emitToProject(task.project._id.toString(), 'task:deleted', {
+        taskId: task._id,
+        projectId: task.project._id,
+        deletedBy: req.user.id
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        deletedCount: result.deletedCount,
+        message: `${result.deletedCount} tasks deleted successfully`
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Move tasks to different status
+ * @route   PUT /api/v1/tasks/move-status
+ * @access  Private
+ */
+exports.moveTasksToStatus = async (req, res, next) => {
+  try {
+    const { taskIds, status } = req.body;
+
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task IDs array is required'
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Status is required'
+      });
+    }
+
+    // Validate status
+    const validStatuses = ['todo', 'in_progress', 'in_review', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be one of: ' + validStatuses.join(', ')
+      });
+    }
+
+    // Find and update tasks
+    const tasks = await Task.find({ _id: { $in: taskIds } }).populate('project');
+    
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No tasks found'
+      });
+    }
+
+    // Check permissions
+    for (const task of tasks) {
+      const userMember = getUserProjectRole(task.project, req.user.id);
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. You are not a member of this project.'
+        });
+      }
+    }
+
+    // Update status
+    const result = await Task.updateMany(
+      { _id: { $in: taskIds } },
+      { 
+        $set: { 
+          status,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Get updated tasks
+    const updatedTasks = await Task.find({ _id: { $in: taskIds } })
+      .populate('assignedTo.user', 'name email')
+      .populate('project', 'title');
+
+    // Emit real-time updates
+    updatedTasks.forEach(task => {
+      socketService.emitToProject(task.project._id.toString(), 'task:status_changed', {
+        task: task,
+        previousStatus: task.status,
+        newStatus: status,
+        updatedBy: req.user.id
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        modifiedCount: result.modifiedCount,
+        tasks: updatedTasks
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Bulk assign tasks to user
+ * @route   PUT /api/v1/tasks/bulk-assign
+ * @access  Private
+ */
+exports.bulkAssignTasks = async (req, res, next) => {
+  try {
+    const { taskIds, userId } = req.body;
+
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task IDs array is required'
+      });
+    }
+
+    // Find tasks and verify permissions
+    const tasks = await Task.find({ _id: { $in: taskIds } }).populate('project');
+    
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No tasks found'
+      });
+    }
+
+    // Check permissions for each task's project
+    for (const task of tasks) {
+      const userMember = getUserProjectRole(task.project, req.user.id);
+      if (!userMember || !['supervisor', 'teamLead'].includes(userMember.role)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Insufficient permissions.'
+        });
+      }
+    }
+
+    // Update assignments
+    const updateData = userId ? 
+      { 'assignedTo.user': userId, 'assignedTo.assignedAt': new Date() } :
+      { $unset: { assignedTo: "" } };
+
+    const result = await Task.updateMany(
+      { _id: { $in: taskIds } },
+      updateData
+    );
+
+    // Get updated tasks
+    const updatedTasks = await Task.find({ _id: { $in: taskIds } })
+      .populate('assignedTo.user', 'name email')
+      .populate('project', 'title');
+
+    // Emit real-time updates
+    updatedTasks.forEach(task => {
+      socketService.emitToProject(task.project._id.toString(), 'task:assigned', {
+        task: task,
+        assignedBy: req.user.id
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        modifiedCount: result.modifiedCount,
+        tasks: updatedTasks
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get task analytics for project
+ * @route   GET /api/v1/projects/:projectId/tasks/analytics
+ * @access  Private
+ */
+exports.getTaskAnalytics = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+
+    // Check project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. You are not a member of this project.'
+      });
+    }
+
+    // Get task analytics
+    const analytics = await Task.aggregate([
+      { $match: { project: project._id } },
+      {
+        $group: {
+          _id: null,
+          totalTasks: { $sum: 1 },
+          completedTasks: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          inProgressTasks: {
+            $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
+          },
+          todoTasks: {
+            $sum: { $cond: [{ $eq: ['$status', 'todo'] }, 1, 0] }
+          },
+          overdueTasks: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $lt: ['$dueDate', new Date()] },
+                    { $ne: ['$status', 'completed'] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          highPriorityTasks: {
+            $sum: { $cond: [{ $eq: ['$priority', 'high'] }, 1, 0] }
+          },
+          averageCompletionTime: {
+            $avg: {
+              $cond: [
+                { $eq: ['$status', 'completed'] },
+                {
+                  $subtract: ['$updatedAt', '$createdAt']
+                },
+                null
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const result = analytics[0] || {
+      totalTasks: 0,
+      completedTasks: 0,
+      inProgressTasks: 0,
+      todoTasks: 0,
+      overdueTasks: 0,
+      highPriorityTasks: 0,
+      averageCompletionTime: 0
+    };
+
+    // Calculate completion percentage
+    result.completionPercentage = result.totalTasks > 0 ? 
+      Math.round((result.completedTasks / result.totalTasks) * 100) : 0;
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Search tasks within project
+ * @route   GET /api/v1/projects/:projectId/tasks/search
+ * @access  Private
+ */
+exports.searchTasks = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { q: searchTerm } = req.query;
+
+    if (!searchTerm) {
+      return res.status(400).json({
+        success: false,
+        error: 'Search term is required'
+      });
+    }
+
+    // Check project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. You are not a member of this project.'
+      });
+    }
+
+    // Search tasks
+    const tasks = await Task.find({
+      project: projectId,
+      $or: [
+        { title: { $regex: searchTerm, $options: 'i' } },
+        { description: { $regex: searchTerm, $options: 'i' } },
+        { 'tags': { $regex: searchTerm, $options: 'i' } }
+      ]
+    })
+    .populate('assignedTo.user', 'name email')
+    .populate('createdBy', 'name email')
+    .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: tasks
     });
   } catch (error) {
     next(error);

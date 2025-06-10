@@ -24,7 +24,14 @@ const FilesWidget = ({
 
   // Update local state when prop changes
   useEffect(() => {
-    setFiles(propFiles);
+    // Only update if propFiles is different (by length or ids)
+    if (
+      propFiles.length !== files.length ||
+      propFiles.some((f, i) => f._id !== files[i]?._id)
+    ) {
+      setFiles(propFiles);
+    }
+    // eslint-disable-next-line
   }, [propFiles]);
 
   // Fetch files when project changes

@@ -405,9 +405,11 @@ const ProjectDetails = () => {
               currentUser={currentUser}
               userRole={userRole}
               permissions={{
+                canSendMessage: checkPermission('canSendMessage'),
                 canModerate: checkPermission('canModerateDiscussions'),
                 canPin: checkPermission('canPinMessages'),
-                canCreateAnnouncements: checkPermission('canCreateAnnouncements')
+                canCreateAnnouncements: checkPermission('canCreateAnnouncements'),
+                canCreateDiscussion: checkPermission('canCreateDiscussion')
               }}
               onMessageSend={handleMessageSend}
               onDiscussionCreate={handleDiscussionCreate}
@@ -486,7 +488,7 @@ const ProjectDetails = () => {
       )}
 
       {/* CSS for widget styling */}
-      <style jsx>{`
+      <style>{`
         .widget-card {
           background: white;
           border-radius: 0.75rem;

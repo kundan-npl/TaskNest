@@ -102,45 +102,113 @@ const taskService = {
   },
 
   // Get tasks for a specific project
-  getProjectTasks: async (projectId) => {
+  getProjectTasks: async (projectId, query = {}) => {
     try {
-      const response = await api.get(`/projects/${projectId}/tasks`);
+      const params = new URLSearchParams(query).toString();
+      const response = await api.get(`/projects/${projectId}/tasks${params ? `?${params}` : ''}`);
       return response.data.data;
     } catch (error) {
-      console.warn('Failed to fetch project tasks from API, using mock data');
-      // Mock data as fallback
-      return [
-        {
-          id: 1,
-          title: 'Setup Project Structure',
-          description: 'Initialize the project with proper folder structure and dependencies',
-          status: 'completed',
-          priority: 'high',
-          assignee: { id: 1, name: 'John Doe', email: 'john@example.com' },
-          createdAt: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-        },
-        {
-          id: 2,
-          title: 'Design Database Schema',
-          description: 'Create the database schema for the application',
-          status: 'in_progress',
-          priority: 'medium',
-          assignee: { id: 2, name: 'Jane Smith', email: 'jane@example.com' },
-          createdAt: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-        },
-        {
-          id: 3,
-          title: 'Implement Authentication',
-          description: 'Add user authentication and authorization',
-          status: 'todo',
-          priority: 'high',
-          assignee: null,
-          createdAt: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
-        }
-      ];
+      throw new Error(error.response?.data?.error || 'Failed to fetch project tasks');
+    }
+  },
+
+  // Bulk update tasks
+  bulkUpdateTasks: async (taskIds, updates) => {
+    try {
+      const response = await api.put('/tasks/bulk-update', { taskIds, updates });
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to bulk update tasks');
+    }
+  },
+
+  // Bulk delete tasks
+  bulkDeleteTasks: async (taskIds) => {
+    try {
+      const response = await api.delete('/tasks/bulk-delete', { data: { taskIds } });
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to bulk delete tasks');
+    }
+  },
+
+  // Move tasks to different status/column
+  moveTasksToStatus: async (taskIds, status) => {
+    try {
+      const response = await api.put('/tasks/move-status', { taskIds, status });
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to move tasks');
+    }
+  },
+
+  // Bulk assign tasks
+  bulkAssignTasks: async (taskIds, userId) => {
+    try {
+      const response = await api.put('/tasks/bulk-assign', { taskIds, userId });
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to bulk assign tasks');
+    }
+  },
+
+  // Get task analytics
+  getTaskAnalytics: async (projectId) => {
+    try {
+      const response = await api.get(`/projects/${projectId}/tasks/analytics`);
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to fetch task analytics');
+    }
+  },
+
+  // Search tasks
+  searchTasks: async (projectId, searchTerm) => {
+    try {
+      const response = await api.get(`/projects/${projectId}/tasks/search?q=${encodeURIComponent(searchTerm)}`);
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to search tasks');
+    }
+  },
+
+  // Get task dependencies
+  getTaskDependencies: async (taskId) => {
+    try {
+      const response = await api.get(`/tasks/${taskId}/dependencies`);
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to fetch task dependencies');
+    }
+  },
+
+  // Set task dependencies
+  setTaskDependencies: async (taskId, dependencies) => {
+    try {
+      const response = await api.put(`/tasks/${taskId}/dependencies`, { dependencies });
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to set task dependencies');
+    }
+  },
+
+  // Duplicate task
+  duplicateTask: async (taskId) => {
+    try {
+      const response = await api.post(`/tasks/${taskId}/duplicate`);
+      return response.data.data || response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to duplicate task');
+    }
+  },
+
+  // Archive completed tasks
+  archiveCompletedTasks: async (projectId) => {
+    try {
+      const response = await api.put(`/projects/${projectId}/tasks/archive-completed`);
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to archive completed tasks');
     }
   }
 };

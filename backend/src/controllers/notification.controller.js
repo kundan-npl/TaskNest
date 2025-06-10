@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Notification = require('../models/notification.model');
 const Project = require('../models/project.model');
 
@@ -13,7 +14,7 @@ exports.getNotifications = async (req, res, next) => {
     const startIndex = (page - 1) * limit;
     const unreadOnly = req.query.unread === 'true';
 
-    let query = { user: req.user.id };
+    let query = { recipient: req.user.id };
     if (unreadOnly) {
       query.isRead = false;
     }
@@ -65,12 +66,12 @@ exports.getNotifications = async (req, res, next) => {
 exports.getNotificationCounts = async (req, res, next) => {
   try {
     const unreadCount = await Notification.countDocuments({
-      user: req.user.id,
+      recipient: req.user.id,
       isRead: false
     });
 
     const totalCount = await Notification.countDocuments({
-      user: req.user.id
+      recipient: req.user.id
     });
 
     res.status(200).json({
@@ -93,7 +94,7 @@ exports.getNotificationCounts = async (req, res, next) => {
 exports.markAsRead = async (req, res, next) => {
   try {
     const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.id },
+      { _id: req.params.id, recipient: req.user.id },
       { isRead: true, readAt: new Date() },
       { new: true }
     );
@@ -122,7 +123,7 @@ exports.markAsRead = async (req, res, next) => {
 exports.markAllAsRead = async (req, res, next) => {
   try {
     await Notification.updateMany(
-      { user: req.user.id, isRead: false },
+      { recipient: req.user.id, isRead: false },
       { isRead: true, readAt: new Date() }
     );
 
@@ -144,7 +145,7 @@ exports.deleteNotification = async (req, res, next) => {
   try {
     const notification = await Notification.findOneAndDelete({
       _id: req.params.id,
-      user: req.user.id
+      recipient: req.user.id
     });
 
     if (!notification) {
@@ -171,7 +172,7 @@ exports.deleteNotification = async (req, res, next) => {
 exports.deleteReadNotifications = async (req, res, next) => {
   try {
     const result = await Notification.deleteMany({
-      user: req.user.id,
+      recipient: req.user.id,
       isRead: true
     });
 
@@ -223,7 +224,7 @@ exports.notifyProjectMembers = async (projectId, notificationData, excludeUsers 
       if (!excludeUsers.includes(member.user._id.toString())) {
         notifications.push({
           ...notificationData,
-          user: member.user._id,
+          recipient: member.user._id,
           relatedProject: projectId
         });
       }
@@ -255,7 +256,7 @@ exports.notifyTaskAssignees = async (assigneeIds, notificationData, excludeUsers
       if (!excludeUsers.includes(assigneeId.toString())) {
         notifications.push({
           ...notificationData,
-          user: assigneeId
+          recipient: assigneeId
         });
       }
     }
@@ -305,8 +306,8 @@ exports.getProjectNotifications = async (req, res, next) => {
 
     // Build query
     let query = {
-      users: req.user.id,
-      'data.projectId': projectId
+      recipient: req.user.id,
+      relatedProject: projectId
     };
 
     if (unread === 'true') {
@@ -319,7 +320,7 @@ exports.getProjectNotifications = async (req, res, next) => {
     }
 
     const notifications = await Notification.find(query)
-      .populate('createdBy', 'name email')
+      .populate('sender', 'name email')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -479,8 +480,8 @@ exports.markProjectNotificationsAsRead = async (req, res, next) => {
     }
 
     let query = {
-      users: req.user.id,
-      'data.projectId': projectId,
+      recipient: req.user.id,
+      relatedProject: projectId,
       isRead: false
     };
 
@@ -530,14 +531,14 @@ exports.getProjectNotificationStats = async (req, res, next) => {
     const [totalCount, unreadCount, typeStats] = await Promise.all([
       // Total notifications for this project
       Notification.countDocuments({
-        users: req.user.id,
-        'data.projectId': projectId
+        recipient: req.user.id,
+        relatedProject: projectId
       }),
       
       // Unread notifications
       Notification.countDocuments({
-        users: req.user.id,
-        'data.projectId': projectId,
+        recipient: req.user.id,
+        relatedProject: projectId,
         isRead: false
       }),
       
@@ -545,8 +546,8 @@ exports.getProjectNotificationStats = async (req, res, next) => {
       Notification.aggregate([
         {
           $match: {
-            users: req.user.id,
-            'data.projectId': mongoose.Types.ObjectId(projectId)
+            recipient: req.user.id,
+            relatedProject: new mongoose.Types.ObjectId(projectId)
           }
         },
         {
@@ -614,20 +615,27 @@ exports.createProjectNotification = async (req, res, next) => {
       users = project.members.map(member => member.user._id || member.user);
     }
 
-    const notificationData = {
-      type,
-      message,
-      users,
-      priority,
-      data: {
-        projectId: projectId,
-        projectTitle: project.title,
-        createdBy: req.user.name
-      },
-      createdBy: req.user.id
-    };
+    // Create notifications for target users
+    const notifications = [];
+    for (const userId of users) {
+      notifications.push({
+        title: 'Project Notification',
+        message,
+        type,
+        recipient: userId,
+        sender: req.user.id,
+        relatedProject: projectId,
+        priority,
+        actionUrl: `/projects/${projectId}`,
+        metadata: {
+          projectTitle: project.title,
+          createdBy: req.user.name
+        }
+      });
+    }
 
-    const notification = await createNotification(notificationData);
+    const createdNotifications = await Notification.insertMany(notifications);
+    const notification = createdNotifications[0]; // Return first one for response
 
     // Emit real-time notification
     const socketService = require('../services/socketService');

@@ -3,7 +3,7 @@ const Project = require('../models/project.model');
 const Task = require('../models/task.model');
 const Milestone = require('../models/milestone.model');
 const socketService = require('../services/socketService');
-const { createNotification } = require('./notification.controller');
+const Notification = require('../models/notification.model');
 
 /**
  * Helper function to check user's role in a project
@@ -128,16 +128,26 @@ exports.createMilestone = async (req, res, next) => {
 
     // Create notifications for assigned users
     if (milestone.assignedTo && milestone.assignedTo.length > 0) {
-      await createNotification({
-        type: 'milestone_assigned',
-        message: `You have been assigned to milestone "${milestone.title}"`,
-        users: milestone.assignedTo.map(user => user._id),
-        data: { 
-          projectId: projectId, 
-          milestoneId: milestone._id,
-          dueDate: milestone.dueDate 
-        }
-      });
+      const Notification = require('../models/notification.model');
+      const notifications = [];
+      
+      for (const user of milestone.assignedTo) {
+        notifications.push({
+          title: 'Milestone Assigned',
+          message: `You have been assigned to milestone "${milestone.title}"`,
+          type: 'milestone_reached', // Using existing enum value
+          recipient: user._id,
+          sender: req.user.id,
+          relatedProject: projectId,
+          actionUrl: `/projects/${projectId}/milestones/${milestone._id}`,
+          metadata: { 
+            milestoneId: milestone._id,
+            dueDate: milestone.dueDate 
+          }
+        });
+      }
+      
+      await Notification.insertMany(notifications);
     }
 
     res.status(201).json({
@@ -222,16 +232,29 @@ exports.updateMilestone = async (req, res, next) => {
 
     // Create notification if status changed to completed
     if (req.body.status === 'completed' && milestone.status !== 'completed') {
-      await createNotification({
-        type: 'milestone_completed',
-        message: `Milestone "${updatedMilestone.title}" has been completed`,
-        users: project.members.map(member => member.user._id || member.user),
-        data: { 
-          projectId: projectId, 
-          milestoneId: updatedMilestone._id,
-          completedBy: req.user.name
-        }
-      });
+      const Notification = require('../models/notification.model');
+      const notifications = [];
+      
+      const memberIds = project.members.map(member => member.user._id || member.user);
+      for (const memberId of memberIds) {
+        notifications.push({
+          title: 'Milestone Completed',
+          message: `Milestone "${updatedMilestone.title}" has been completed`,
+          type: 'milestone_reached',
+          recipient: memberId,
+          sender: req.user.id,
+          relatedProject: projectId,
+          actionUrl: `/projects/${projectId}/milestones/${updatedMilestone._id}`,
+          metadata: { 
+            milestoneId: updatedMilestone._id,
+            completedBy: req.user.name
+          }
+        });
+      }
+      
+      if (notifications.length > 0) {
+        await Notification.insertMany(notifications);
+      }
     }
 
     res.status(200).json({
@@ -420,11 +443,334 @@ exports.linkTasksToMilestone = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get milestone analytics for a project
+ * @route   GET /api/v1/projects/:projectId/milestones/analytics
+ * @access  Private
+ */
+exports.getMilestoneAnalytics = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view this project'
+      });
+    }
+
+    const milestones = await Milestone.find({ project: projectId })
+      .populate('tasks', 'status priority');
+
+    const analytics = {
+      total: milestones.length,
+      completed: milestones.filter(m => m.status === 'completed').length,
+      inProgress: milestones.filter(m => m.status === 'in-progress').length,
+      pending: milestones.filter(m => m.status === 'pending').length,
+      overdue: milestones.filter(m => 
+        m.dueDate && new Date(m.dueDate) < new Date() && m.status !== 'completed'
+      ).length,
+      averageProgress: milestones.reduce((sum, m) => sum + m.progress, 0) / milestones.length || 0,
+      priorityDistribution: {
+        high: milestones.filter(m => m.priority === 'high').length,
+        medium: milestones.filter(m => m.priority === 'medium').length,
+        low: milestones.filter(m => m.priority === 'low').length
+      },
+      taskDistribution: milestones.map(m => ({
+        id: m._id,
+        title: m.title,
+        taskCount: m.tasks.length,
+        completedTasks: m.tasks.filter(t => t.status === 'completed').length
+      }))
+    };
+
+    res.json({
+      success: true,
+      data: analytics
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get detailed milestone with progress and dependencies
+ * @route   GET /api/v1/projects/:projectId/milestones/:id/details
+ * @access  Private
+ */
+exports.getMilestoneDetails = async (req, res, next) => {
+  try {
+    const { projectId, id } = req.params;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view this project'
+      });
+    }
+
+    const milestone = await Milestone.findById(id)
+      .populate([
+        { path: 'assignedTo', select: 'name email avatar' },
+        { path: 'createdBy', select: 'name email' },
+        { path: 'tasks', populate: { path: 'assignedTo', select: 'name email' } },
+        { path: 'dependencies', select: 'title status progress dueDate' }
+      ]);
+
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        error: 'Milestone not found'
+      });
+    }
+
+    // Calculate detailed progress
+    const taskProgress = milestone.tasks.reduce((acc, task) => {
+      acc.total++;
+      if (task.status === 'completed') acc.completed++;
+      else if (task.status === 'in-progress') acc.inProgress++;
+      else acc.pending++;
+      return acc;
+    }, { total: 0, completed: 0, inProgress: 0, pending: 0 });
+
+    const detailedMilestone = {
+      ...milestone.toObject(),
+      taskProgress,
+      isOverdue: milestone.dueDate && new Date(milestone.dueDate) < new Date() && milestone.status !== 'completed',
+      daysRemaining: milestone.dueDate ? Math.ceil((new Date(milestone.dueDate) - new Date()) / (1000 * 60 * 60 * 24)) : null
+    };
+
+    res.json({
+      success: true,
+      data: detailedMilestone
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update milestone progress
+ * @route   PUT /api/v1/projects/:projectId/milestones/:id/progress
+ * @access  Private
+ */
+exports.updateMilestoneProgress = async (req, res, next) => {
+  try {
+    const { projectId, id } = req.params;
+    const { progress, notes } = req.body;
+
+    // Verify project access and permissions
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to access this project'
+      });
+    }
+
+    const milestone = await Milestone.findById(id);
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        error: 'Milestone not found'
+      });
+    }
+
+    // Update progress
+    milestone.progress = Math.max(0, Math.min(100, progress));
+    
+    // Auto-update status based on progress
+    if (milestone.progress === 100 && milestone.status !== 'completed') {
+      milestone.status = 'completed';
+      milestone.completedAt = new Date();
+    } else if (milestone.progress > 0 && milestone.status === 'pending') {
+      milestone.status = 'in-progress';
+    }
+
+    // Add progress note if provided
+    if (notes) {
+      milestone.progressNotes = milestone.progressNotes || [];
+      milestone.progressNotes.push({
+        note: notes,
+        progress: milestone.progress,
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      });
+    }
+
+    await milestone.save();
+
+    // Emit real-time update
+    socketService.emitToProject(projectId, 'milestone:progress_updated', {
+      milestoneId: id,
+      progress: milestone.progress,
+      status: milestone.status,
+      updatedBy: req.user.name,
+      timestamp: new Date()
+    });
+
+    res.json({
+      success: true,
+      data: milestone
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Bulk update milestones
+ * @route   PUT /api/v1/projects/:projectId/milestones/bulk-update
+ * @access  Private
+ */
+exports.bulkUpdateMilestones = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { milestoneIds, updates } = req.body;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember || (!userMember.permissions.canAssignTasks && userMember.role === 'teamMember')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update milestones'
+      });
+    }
+
+    const result = await Milestone.updateMany(
+      { 
+        _id: { $in: milestoneIds },
+        project: projectId 
+      },
+      { 
+        ...updates,
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      }
+    );
+
+    // Emit real-time update
+    socketService.emitToProject(projectId, 'milestones:bulk_updated', {
+      milestoneIds,
+      updates,
+      updatedBy: req.user.name,
+      timestamp: new Date()
+    });
+
+    res.json({
+      success: true,
+      data: {
+        modifiedCount: result.modifiedCount,
+        message: `${result.modifiedCount} milestones updated successfully`
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get milestone timeline with Gantt chart data
+ * @route   GET /api/v1/projects/:projectId/milestones/timeline/gantt
+ * @access  Private
+ */
+exports.getMilestoneGanttData = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project access
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+
+    const userMember = getUserProjectRole(project, req.user.id);
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to view this project'
+      });
+    }
+
+    const milestones = await Milestone.find({ project: projectId })
+      .populate('dependencies', 'title startDate dueDate')
+      .sort({ startDate: 1 });
+
+    const ganttData = milestones.map(milestone => ({
+      id: milestone._id,
+      title: milestone.title,
+      start: milestone.startDate,
+      end: milestone.dueDate,
+      progress: milestone.progress,
+      status: milestone.status,
+      priority: milestone.priority,
+      dependencies: milestone.dependencies.map(dep => dep._id),
+      assignedTo: milestone.assignedTo,
+      color: {
+        'high': '#ef4444',
+        'medium': '#f59e0b',
+        'low': '#10b981'
+      }[milestone.priority] || '#6b7280'
+    }));
+
+    res.json({
+      success: true,
+      data: ganttData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProjectMilestones: exports.getProjectMilestones,
   createMilestone: exports.createMilestone,
   updateMilestone: exports.updateMilestone,
   deleteMilestone: exports.deleteMilestone,
   getMilestoneTimeline: exports.getMilestoneTimeline,
-  linkTasksToMilestone: exports.linkTasksToMilestone
+  linkTasksToMilestone: exports.linkTasksToMilestone,
+  getMilestoneAnalytics: exports.getMilestoneAnalytics,
+  getMilestoneDetails: exports.getMilestoneDetails,
+  updateMilestoneProgress: exports.updateMilestoneProgress,
+  bulkUpdateMilestones: exports.bulkUpdateMilestones,
+  getMilestoneGanttData: exports.getMilestoneGanttData
 };

@@ -177,21 +177,49 @@ exports.forgotPassword = async (req, res, next) => {
 
     await user.save({ validateBeforeSave: false });
 
-    // Create reset url
-    const resetUrl = `${req.protocol}://${req.get(
-      'host'
-    )}/api/v1/auth/resetpassword/${resetToken}`;
-
-    // In a real application, you would send an email with the reset link
-    // For this example, we'll just return the token
-
-    res.status(200).json({
-      success: true,
-      data: {
+    // Try to send email
+    const emailService = require('../services/email.service');
+    
+    if (emailService.isAvailable()) {
+      const emailResult = await emailService.sendPasswordReset({
+        email: user.email,
         resetToken,
-        resetUrl
+        userName: user.name
+      });
+
+      if (emailResult.success) {
+        res.status(200).json({
+          success: true,
+          message: 'Password reset email sent successfully'
+        });
+      } else {
+        // Email failed but continue with fallback
+        console.error('Email sending failed:', emailResult.error);
+        res.status(200).json({
+          success: true,
+          message: 'Password reset initiated',
+          data: {
+            resetToken,
+            note: 'Email service unavailable - please use the provided token'
+          }
+        });
       }
-    });
+    } else {
+      // Email service not configured - provide fallback
+      const resetUrl = `${req.protocol}://${req.get(
+        'host'
+      )}/api/v1/auth/resetpassword/${resetToken}`;
+
+      res.status(200).json({
+        success: true,
+        message: 'Password reset initiated',
+        data: {
+          resetToken,
+          resetUrl,
+          note: 'Email service not configured - please use the provided reset URL'
+        }
+      });
+    }
   } catch (err) {
     console.log(err);
 

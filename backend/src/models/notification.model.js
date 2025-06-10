@@ -78,7 +78,7 @@ const NotificationSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-NotificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
+NotificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
 NotificationSchema.index({ type: 1 });
 NotificationSchema.index({ priority: 1 });
 
@@ -97,14 +97,14 @@ NotificationSchema.statics.createNotification = async function(data) {
 // Static method to mark multiple notifications as read
 NotificationSchema.statics.markMultipleAsRead = async function(notificationIds, userId) {
   return await this.updateMany(
-    { _id: { $in: notificationIds }, user: userId },
+    { _id: { $in: notificationIds }, recipient: userId },
     { isRead: true, readAt: new Date() }
   );
 };
 
 // Static method to get unread count for user
 NotificationSchema.statics.getUnreadCount = async function(userId) {
-  return await this.countDocuments({ user: userId, isRead: false });
+  return await this.countDocuments({ recipient: userId, isRead: false });
 };
 
 // Middleware to populate related entities

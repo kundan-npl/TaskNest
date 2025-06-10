@@ -132,11 +132,21 @@ const PORT = process.env.PORT || 5500;
 const socketService = require('./src/services/socketService');
 socketService.initialize(server);
 
-// Start server
-server.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-  console.log('Socket.IO server initialized');
-});
+// Initialize Email Service
+const emailService = require('./src/services/email.service');
+
+// Start server with async initialization
+const startServer = async () => {
+  // Initialize email service
+  await emailService.initialize();
+  
+  server.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log('Socket.IO server initialized');
+  });
+};
+
+startServer();
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {

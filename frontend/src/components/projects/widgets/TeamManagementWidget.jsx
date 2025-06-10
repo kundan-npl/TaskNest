@@ -16,7 +16,7 @@ const TeamManagementWidget = ({
 }) => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState('teamMember');
+  const [selectedRole, setSelectedRole] = useState('team-member');
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,19 +28,21 @@ const TeamManagementWidget = ({
   const [teamStats, setTeamStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [teamMembers, setTeamMembers] = useState(members);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
 
   const { socket, isConnected, onlineUsers } = useSocket();
 
   const roleLabels = {
     supervisor: 'Supervisor',
-    teamLead: 'Team Lead',
-    teamMember: 'Team Member'
+    'team-lead': 'Team Lead',
+    'team-member': 'Team Member'
   };
 
   const roleColors = {
     supervisor: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-    teamLead: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    teamMember: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+    'team-lead': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+    'team-member': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
   };
 
   // Real-time team updates via Socket.IO
@@ -98,7 +100,22 @@ const TeamManagementWidget = ({
   // Load team statistics
   useEffect(() => {
     loadTeamStats();
+    loadPendingInvitations();
   }, [project?._id]);
+
+  const loadPendingInvitations = async () => {
+    if (!project?._id || !permissions?.canManageMembers) return;
+    
+    try {
+      setLoadingInvitations(true);
+      const response = await projectService.getPendingInvitations(project._id);
+      setPendingInvitations(response.data || []);
+    } catch (error) {
+      console.error('Failed to load pending invitations:', error);
+    } finally {
+      setLoadingInvitations(false);
+    }
+  };
 
   const loadTeamStats = async () => {
     if (!project?._id) return;
@@ -143,8 +160,9 @@ const TeamManagementWidget = ({
         onMemberAdd?.(response.member);
         setShowInviteModal(false);
         setInviteEmail('');
-        setSelectedRole('teamMember');
+        setSelectedRole('team-member');
         loadTeamStats(); // Refresh stats
+        loadPendingInvitations(); // Refresh pending invitations
       } else {
         toast.error(response.message || 'Failed to send invitation');
       }
@@ -267,6 +285,29 @@ const TeamManagementWidget = ({
     }
   };
 
+  const handleCancelInvitation = async (token) => {
+    if (!project?._id) return;
+
+    if (window.confirm('Are you sure you want to cancel this invitation?')) {
+      try {
+        setLoadingInvitations(true);
+        const response = await projectService.cancelInvitation(project._id, token);
+        
+        if (response.success) {
+          toast.success('Invitation cancelled successfully');
+          loadPendingInvitations(); // Refresh pending invitations
+        } else {
+          toast.error(response.message || 'Failed to cancel invitation');
+        }
+      } catch (error) {
+        console.error('Failed to cancel invitation:', error);
+        toast.error(error.response?.data?.message || 'Failed to cancel invitation');
+      } finally {
+        setLoadingInvitations(false);
+      }
+    }
+  };
+
   const toggleMemberSelection = (memberId) => {
     const newSelected = new Set(selectedMembers);
     if (newSelected.has(memberId)) {
@@ -302,6 +343,7 @@ const TeamManagementWidget = ({
   };
 
   const getRoleIcon = (role) => {
+    // Handle both old camelCase and new kebab-case formats for backward compatibility
     switch (role) {
       case 'supervisor':
         return (
@@ -309,12 +351,15 @@ const TeamManagementWidget = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
           </svg>
         );
-      case 'teamLead':
+      case 'team-lead':
+      case 'teamLead': // Backward compatibility
         return (
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
           </svg>
         );
+      case 'team-member':
+      case 'teamMember': // Backward compatibility
       default:
         return (
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -359,8 +404,8 @@ const TeamManagementWidget = ({
                   className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">Change Role</option>
-                  <option value="teamMember">Team Member</option>
-                  <option value="teamLead">Team Lead</option>
+                  <option value="team-member">Team Member</option>
+                  <option value="team-lead">Team Lead</option>
                   {permissions?.canManage && <option value="supervisor">Supervisor</option>}
                 </select>
                 <button
@@ -453,6 +498,53 @@ const TeamManagementWidget = ({
 
       {/* Team Members List */}
       <div className="space-y-3 max-h-96 overflow-y-auto">
+        {/* Pending Invitations Section */}
+        {pendingInvitations.length > 0 && permissions?.canManageMembers && (
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Pending Invitations ({pendingInvitations.length})
+            </h4>
+            <div className="space-y-2">
+              {pendingInvitations.map((invitation) => (
+                <div 
+                  key={invitation._id || invitation.token}
+                  className="flex items-center justify-between p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 opacity-60"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center">
+                      <svg className="h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white">{invitation.email}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        Invited {invitation.invitedAt ? new Date(invitation.invitedAt).toLocaleDateString() : 'recently'} • 
+                        Role: {roleLabels[invitation.role] || invitation.role}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
+                      Pending
+                    </span>
+                    {permissions?.canManageMembers && (
+                      <button
+                        onClick={() => handleCancelInvitation(invitation.token)}
+                        className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm"
+                        title="Cancel invitation"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {filteredMembers.length === 0 ? (
           <div className="text-center py-8">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -522,7 +614,7 @@ const TeamManagementWidget = ({
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${roleColors[member.role] || roleColors.teamMember}`}>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${roleColors[member.role] || roleColors['team-member']}`}>
                     <span className="mr-1">{getRoleIcon(member.role)}</span>
                     {roleLabels[member.role] || member.role}
                   </span>
@@ -589,8 +681,8 @@ const TeamManagementWidget = ({
                     onChange={(e) => setSelectedRole(e.target.value)}
                     className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   >
-                    <option value="teamMember">Team Member</option>
-                    <option value="teamLead">Team Lead</option>
+                    <option value="team-member">Team Member</option>
+                    <option value="team-lead">Team Lead</option>
                     {permissions?.canManage && <option value="supervisor">Supervisor</option>}
                   </select>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">

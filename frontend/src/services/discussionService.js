@@ -25,13 +25,11 @@ api.interceptors.request.use(
   }
 );
 
-const DISCUSSION_API_URL = '/discussions';
-
 const discussionService = {
   // Get all discussions for a project
   getProjectDiscussions: async (projectId) => {
     try {
-      const response = await api.get(`${DISCUSSION_API_URL}/project/${projectId}`);
+      const response = await api.get(`/projects/${projectId}/discussions`);
       return response.data;
     } catch (error) {
       console.error('Error fetching project discussions:', error);
@@ -40,9 +38,9 @@ const discussionService = {
   },
 
   // Create a new discussion
-  createDiscussion: async (discussionData) => {
+  createDiscussion: async (projectId, discussionData) => {
     try {
-      const response = await api.post(DISCUSSION_API_URL, discussionData);
+      const response = await api.post(`/projects/${projectId}/discussions`, discussionData);
       return response.data;
     } catch (error) {
       console.error('Error creating discussion:', error);
@@ -51,9 +49,9 @@ const discussionService = {
   },
 
   // Get a specific discussion by ID
-  getDiscussionById: async (discussionId) => {
+  getDiscussionById: async (projectId, discussionId) => {
     try {
-      const response = await api.get(`${DISCUSSION_API_URL}/${discussionId}`);
+      const response = await api.get(`/projects/${projectId}/discussions/${discussionId}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching discussion:', error);
@@ -62,9 +60,9 @@ const discussionService = {
   },
 
   // Update a discussion
-  updateDiscussion: async (discussionId, updateData) => {
+  updateDiscussion: async (projectId, discussionId, updateData) => {
     try {
-      const response = await api.put(`${DISCUSSION_API_URL}/${discussionId}`, updateData);
+      const response = await api.put(`/projects/${projectId}/discussions/${discussionId}`, updateData);
       return response.data;
     } catch (error) {
       console.error('Error updating discussion:', error);
@@ -73,9 +71,9 @@ const discussionService = {
   },
 
   // Delete a discussion
-  deleteDiscussion: async (discussionId) => {
+  deleteDiscussion: async (projectId, discussionId) => {
     try {
-      const response = await api.delete(`${DISCUSSION_API_URL}/${discussionId}`);
+      const response = await api.delete(`/projects/${projectId}/discussions/${discussionId}`);
       return response.data;
     } catch (error) {
       console.error('Error deleting discussion:', error);
@@ -84,9 +82,9 @@ const discussionService = {
   },
 
   // Add a reply to a discussion
-  addReply: async (discussionId, replyData) => {
+  addReply: async (projectId, discussionId, replyData) => {
     try {
-      const response = await api.post(`${DISCUSSION_API_URL}/${discussionId}/replies`, replyData);
+      const response = await api.post(`/projects/${projectId}/discussions/${discussionId}/replies`, replyData);
       return response.data;
     } catch (error) {
       console.error('Error adding reply:', error);
@@ -95,9 +93,9 @@ const discussionService = {
   },
 
   // Like/unlike a discussion
-  toggleLike: async (discussionId) => {
+  toggleLike: async (projectId, discussionId) => {
     try {
-      const response = await api.post(`${DISCUSSION_API_URL}/${discussionId}/like`);
+      const response = await api.post(`/projects/${projectId}/discussions/${discussionId}/like`);
       return response.data;
     } catch (error) {
       console.error('Error toggling like:', error);
@@ -106,9 +104,9 @@ const discussionService = {
   },
 
   // Like/unlike a reply
-  toggleReplyLike: async (discussionId, replyId) => {
+  toggleReplyLike: async (projectId, discussionId, replyId) => {
     try {
-      const response = await api.post(`${DISCUSSION_API_URL}/${discussionId}/replies/${replyId}/like`);
+      const response = await api.post(`/projects/${projectId}/discussions/${discussionId}/replies/${replyId}/like`);
       return response.data;
     } catch (error) {
       console.error('Error toggling reply like:', error);
@@ -117,9 +115,9 @@ const discussionService = {
   },
 
   // Pin/unpin a discussion (for moderators)
-  togglePin: async (discussionId) => {
+  togglePin: async (projectId, discussionId) => {
     try {
-      const response = await api.post(`${DISCUSSION_API_URL}/${discussionId}/pin`);
+      const response = await api.post(`/projects/${projectId}/discussions/${discussionId}/pin`);
       return response.data;
     } catch (error) {
       console.error('Error toggling pin:', error);
@@ -128,9 +126,9 @@ const discussionService = {
   },
 
   // Lock/unlock a discussion (for moderators)
-  toggleLock: async (discussionId) => {
+  toggleLock: async (projectId, discussionId) => {
     try {
-      const response = await api.post(`${DISCUSSION_API_URL}/${discussionId}/lock`);
+      const response = await api.post(`/projects/${projectId}/discussions/${discussionId}/lock`);
       return response.data;
     } catch (error) {
       console.error('Error toggling lock:', error);
@@ -139,130 +137,9 @@ const discussionService = {
   },
 
   // Mark discussion as viewed
-  markAsViewed: async (discussionId) => {
-    try {
-      const response = await api.post(`${DISCUSSION_API_URL}/${discussionId}/view`);
-      return response.data;
-    } catch (error) {
-      console.error('Error marking as viewed:', error);
-      throw error;
-    }
-  },
-  
-  // Get all discussions for a project
-  getProjectDiscussions: async (projectId) => {
-    try {
-      const response = await api.get(`${API_URL}/project/${projectId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching project discussions:', error);
-      throw error;
-    }
-  },
-
-  // Create a new discussion
-  createDiscussion: async (discussionData) => {
-    try {
-      const response = await api.post(API_URL, discussionData);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating discussion:', error);
-      throw error;
-    }
-  },
-
-  // Get a specific discussion by ID
-  getDiscussionById: async (discussionId) => {
-    try {
-      const response = await api.get(`${API_URL}/${discussionId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching discussion:', error);
-      throw error;
-    }
-  },
-
-  // Update a discussion
-  updateDiscussion: async (discussionId, updateData) => {
-    try {
-      const response = await api.put(`${API_URL}/${discussionId}`, updateData);
-      return response.data;
-    } catch (error) {
-      console.error('Error updating discussion:', error);
-      throw error;
-    }
-  },
-
-  // Delete a discussion
-  deleteDiscussion: async (discussionId) => {
-    try {
-      const response = await api.delete(`${API_URL}/${discussionId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error deleting discussion:', error);
-      throw error;
-    }
-  },
-
-  // Add a reply to a discussion
-  addReply: async (discussionId, replyData) => {
-    try {
-      const response = await api.post(`${API_URL}/${discussionId}/replies`, replyData);
-      return response.data;
-    } catch (error) {
-      console.error('Error adding reply:', error);
-      throw error;
-    }
-  },
-
-  // Like/unlike a discussion
-  toggleLike: async (discussionId) => {
-    try {
-      const response = await api.post(`${API_URL}/${discussionId}/like`);
-      return response.data;
-    } catch (error) {
-      console.error('Error toggling like:', error);
-      throw error;
-    }
-  },
-
-  // Like/unlike a reply
-  toggleReplyLike: async (discussionId, replyId) => {
-    try {
-      const response = await api.post(`${API_URL}/${discussionId}/replies/${replyId}/like`);
-      return response.data;
-    } catch (error) {
-      console.error('Error toggling reply like:', error);
-      throw error;
-    }
-  },
-
-  // Pin/unpin a discussion (for moderators)
-  togglePin: async (discussionId) => {
-    try {
-      const response = await api.post(`${API_URL}/${discussionId}/pin`);
-      return response.data;
-    } catch (error) {
-      console.error('Error toggling pin:', error);
-      throw error;
-    }
-  },
-
-  // Lock/unlock a discussion (for moderators)
-  toggleLock: async (discussionId) => {
-    try {
-      const response = await api.post(`${API_URL}/${discussionId}/lock`);
-      return response.data;
-    } catch (error) {
-      console.error('Error toggling lock:', error);
-      throw error;
-    }
-  },
-
-  // Mark discussion as viewed
-  markAsViewed: async (discussionId) => {
-    try {
-      const response = await api.post(`${API_URL}/${discussionId}/view`);
+  markAsViewed: async (projectId, discussionId) => {
+        try {
+      const response = await api.post(`/projects/${projectId}/discussions/${discussionId}/view`);
       return response.data;
     } catch (error) {
       console.error('Error marking as viewed:', error);

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { toast } from 'react-toastify';
 import projectService from '../../../services/projectService';
+import discussionService from '../../../services/discussionService';
 import { SocketContext } from '../../../context/SocketContext';
 
 const CommunicationWidget = ({ 
-  discussions = [], 
+  discussions: propDiscussions = [], 
   project, 
   currentUser, 
   userRole, 
@@ -31,6 +32,12 @@ const CommunicationWidget = ({
   const [loadingActivity, setLoadingActivity] = useState(false);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const [discussions, setDiscussions] = useState(propDiscussions);
+  const [selectedDiscussion, setSelectedDiscussion] = useState(null);
+  const [discussionReplies, setDiscussionReplies] = useState([]);
+  const [replyText, setReplyText] = useState('');
+  const [replyLoading, setReplyLoading] = useState(false);
+  const replyInputRef = useRef(null);
 
   // Load data on component mount
   useEffect(() => {
@@ -46,6 +53,11 @@ const CommunicationWidget = ({
       }
     };
   }, [project?._id, socket]);
+
+  // Sync local discussions state with prop when prop changes
+  useEffect(() => {
+    setDiscussions(propDiscussions);
+  }, [propDiscussions]);
 
   // Socket event listeners
   useEffect(() => {
@@ -105,7 +117,12 @@ const CommunicationWidget = ({
     try {
       setLoading(true);
       const response = await projectService.getMessages(project._id);
-      setMessages(response.data || []);
+      // Normalize messages: ensure each has a 'timestamp' field
+      const normalized = (response.data || []).map(msg => ({
+        ...msg,
+        timestamp: msg.timestamp || msg.createdAt || null
+      }));
+      setMessages(normalized);
     } catch (error) {
       console.error('Failed to load messages:', error);
       // Fallback to mock data
@@ -152,13 +169,14 @@ const CommunicationWidget = ({
 
     setLoading(true);
     try {
-      const response = await projectService.createDiscussion(project._id, {
+      const response = await discussionService.createDiscussion(project._id, {
         title: newDiscussion.title,
         content: newDiscussion.content
       });
 
       if (response.success) {
         const discussion = response.data;
+        setDiscussions(prev => [...prev, discussion]); // Update local state immediately
         onDiscussionCreate?.(discussion);
         setNewDiscussion({ title: '', content: '' });
         setShowNewDiscussion(false);
@@ -300,6 +318,51 @@ const CommunicationWidget = ({
     }
   };
 
+  // Fetch replies when a discussion is selected
+  useEffect(() => {
+    if (selectedDiscussion) {
+      const fetchReplies = async () => {
+        try {
+          setReplyLoading(true);
+          const res = await discussionService.getDiscussionById(project._id, selectedDiscussion._id || selectedDiscussion.id);
+          setDiscussionReplies(res.data.replies || []);
+        } catch (e) {
+          setDiscussionReplies([]);
+        } finally {
+          setReplyLoading(false);
+        }
+      };
+      fetchReplies();
+    }
+  }, [selectedDiscussion, project._id]);
+
+  const handleViewDiscussion = (discussion) => {
+    setSelectedDiscussion(discussion);
+    setReplyText('');
+    setTimeout(() => replyInputRef.current?.focus(), 200);
+  };
+
+  const handleCloseDiscussion = () => {
+    setSelectedDiscussion(null);
+    setDiscussionReplies([]);
+    setReplyText('');
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim()) return;
+    setReplyLoading(true);
+    try {
+      const res = await discussionService.addReply(project._id, selectedDiscussion._id || selectedDiscussion.id, { content: replyText });
+      setDiscussionReplies(res.data.replies || []);
+      setReplyText('');
+      setTimeout(() => replyInputRef.current?.focus(), 200);
+    } catch (e) {
+      toast.error('Failed to send reply');
+    } finally {
+      setReplyLoading(false);
+    }
+  };
+
   const renderDiscussions = () => (
     <div className="space-y-4">
       {/* New Discussion Button */}
@@ -310,42 +373,41 @@ const CommunicationWidget = ({
         {permissions?.canCreateDiscussion && (
           <button
             onClick={() => setShowNewDiscussion(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-xs font-medium transition-colors duration-200"
           >
-            New Discussion
+            New
           </button>
         )}
       </div>
-
       {/* New Discussion Form */}
       {showNewDiscussion && (
-        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="space-y-3">
+        <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2">
+          <div className="space-y-2">
             <input
               type="text"
-              placeholder="Discussion title"
+              placeholder="Title"
               value={newDiscussion.title}
-              onChange={(e) => setNewDiscussion({ ...newDiscussion, title: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              onChange={e => setNewDiscussion({ ...newDiscussion, title: e.target.value })}
+              className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-xs"
             />
             <textarea
               placeholder="Start the discussion..."
               value={newDiscussion.content}
-              onChange={(e) => setNewDiscussion({ ...newDiscussion, content: e.target.value })}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white resize-none"
+              onChange={e => setNewDiscussion({ ...newDiscussion, content: e.target.value })}
+              rows={2}
+              className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-xs resize-none"
             />
             <div className="flex justify-end space-x-2">
               <button
                 onClick={() => setShowNewDiscussion(false)}
-                className="px-3 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                className="px-2 py-1 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 text-xs"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateDiscussion}
                 disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1 rounded-md text-sm font-medium"
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1 rounded text-xs font-medium"
               >
                 {loading ? 'Creating...' : 'Create'}
               </button>
@@ -353,33 +415,76 @@ const CommunicationWidget = ({
           </div>
         </div>
       )}
-
+      {/* Inline Discussion Details */}
+      {selectedDiscussion ? (
+        <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-2 shadow-sm transition-all duration-200">
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-semibold text-blue-700 dark:text-blue-300 text-sm truncate">{selectedDiscussion.title}</div>
+            <button onClick={handleCloseDiscussion} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2 py-0.5">✕</button>
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-300 mb-2">{selectedDiscussion.content}</div>
+          <div className="text-[11px] text-gray-400 mb-2">By {selectedDiscussion.author?.name} • {new Date(selectedDiscussion.createdAt).toLocaleString()}</div>
+          <div className="max-h-32 overflow-y-auto space-y-2 mb-2 pr-1 custom-scrollbar">
+            {replyLoading ? (
+              <div className="text-xs text-gray-400 text-center py-2">Loading...</div>
+            ) : discussionReplies.length === 0 ? (
+              <div className="text-xs text-gray-400 text-center py-2">No replies yet</div>
+            ) : (
+              discussionReplies.map((reply, idx) => (
+                <div key={reply._id || idx} className="bg-gray-100 dark:bg-gray-700 rounded px-2 py-1 flex flex-col">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700 dark:text-gray-200 text-xs">{reply.author?.name || 'User'}</span>
+                    <span className="text-[10px] text-gray-400">{new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{reply.content}</div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex items-center space-x-2 mt-1">
+            <input
+              ref={replyInputRef}
+              type="text"
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSendReply(); }}
+              placeholder="Write a reply..."
+              className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              disabled={replyLoading}
+            />
+            <button
+              onClick={handleSendReply}
+              disabled={replyLoading || !replyText.trim()}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium disabled:opacity-50"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      ) : null}
       {/* Discussions List */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {discussions.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center py-6 text-gray-400 text-xs">
+            <svg className="mx-auto h-8 w-8 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            <p>No discussions yet</p>
-            <p className="text-sm">Start a conversation to collaborate with your team</p>
+            No discussions yet<br />Start a conversation to collaborate
           </div>
         ) : (
           discussions.map((discussion) => (
-            <div key={discussion.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors duration-200">
-              <div className="flex justify-between items-start mb-2">
-                <h4 className="font-medium text-gray-900 dark:text-white">{discussion.title}</h4>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{discussion.createdAt}</span>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">{discussion.content}</p>
-              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <div className="flex items-center space-x-4">
-                  <span>By {discussion.author?.name}</span>
-                  <span>{discussion.replies?.length || 0} replies</span>
-                </div>
-                <button className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-                  View Discussion
+            <div key={discussion.id || discussion._id} className={`bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 flex flex-col transition-all duration-150 ${selectedDiscussion && (selectedDiscussion._id === (discussion._id || discussion.id)) ? 'ring-2 ring-blue-400' : ''}`}>
+              <div className="flex items-center justify-between">
+                <div className="truncate font-medium text-xs text-gray-900 dark:text-white">{discussion.title}</div>
+                <button className="text-blue-500 hover:text-blue-700 text-xs font-medium px-2 py-0.5" onClick={() => handleViewDiscussion(discussion)}>
+                  View
                 </button>
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{discussion.content}</div>
+              <div className="flex items-center space-x-2 mt-1 text-[10px] text-gray-400">
+                <span>By {discussion.author?.name}</span>
+                <span>• {discussion.replies?.length || 0} replies</span>
+                <span>• {new Date(discussion.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
           ))

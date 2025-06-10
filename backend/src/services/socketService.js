@@ -11,7 +11,7 @@ class SocketService {
   initialize(server) {
     this.io = new Server(server, {
       cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:5173",
+        origin: process.env.CLIENT_URL || "http://localhost:3000",
         methods: ["GET", "POST"],
         credentials: true
       }
@@ -112,6 +112,8 @@ class SocketService {
 
       // Setup dashboard-specific events
       this.setupDashboardEvents(socket);
+      // Setup widget-specific events
+      this.setupWidgetEvents(socket);
 
       // Handle disconnection
       socket.on('disconnect', () => {
@@ -303,6 +305,299 @@ class SocketService {
     socket.on('dashboard_activity', (activity) => {
       // Track user activity for analytics
       this.trackDashboardActivity(socket.userId, activity);
+    });
+  }
+
+  // Widget-specific event handlers
+  setupWidgetEvents(socket) {
+    // Task Management Widget Events
+    socket.on('task:update_status', (data) => {
+      this.emitProjectEvent(data.projectId, 'task:status_changed', {
+        taskId: data.taskId,
+        oldStatus: data.oldStatus,
+        newStatus: data.newStatus,
+        updatedBy: socket.user.name
+      });
+    });
+
+    socket.on('task:assign', (data) => {
+      this.emitProjectEvent(data.projectId, 'task:assigned', {
+        taskId: data.taskId,
+        assignedTo: data.assignedTo,
+        assignedBy: socket.user.name
+      });
+    });
+
+    socket.on('task:comment', (data) => {
+      this.emitProjectEvent(data.projectId, 'task:comment_added', {
+        taskId: data.taskId,
+        comment: data.comment,
+        author: socket.user.name
+      });
+    });
+
+    // Communication Widget Events
+    socket.on('message:send', (data) => {
+      this.emitMessageEvent(data.projectId, 'message:new', {
+        message: data.message,
+        author: {
+          id: socket.userId,
+          name: socket.user.name,
+          avatar: socket.user.avatar
+        }
+      });
+    });
+
+    socket.on('message:edit', (data) => {
+      this.emitMessageEvent(data.projectId, 'message:edited', {
+        messageId: data.messageId,
+        newContent: data.content,
+        editedBy: socket.user.name
+      });
+    });
+
+    socket.on('message:react', (data) => {
+      this.emitMessageEvent(data.projectId, 'message:reaction_added', {
+        messageId: data.messageId,
+        emoji: data.emoji,
+        userId: socket.userId,
+        userName: socket.user.name
+      });
+    });
+
+    socket.on('discussion:create', (data) => {
+      this.emitMessageEvent(data.projectId, 'discussion:created', {
+        discussion: data.discussion,
+        createdBy: socket.user.name
+      });
+    });
+
+    // File Management Widget Events
+    socket.on('file:upload', (data) => {
+      this.emitFileEvent(data.projectId, 'file:uploaded', {
+        file: data.file,
+        uploadedBy: socket.user.name
+      });
+    });
+
+    socket.on('file:delete', (data) => {
+      this.emitFileEvent(data.projectId, 'file:deleted', {
+        fileId: data.fileId,
+        fileName: data.fileName,
+        deletedBy: socket.user.name
+      });
+    });
+
+    socket.on('file:share', (data) => {
+      this.emitFileEvent(data.projectId, 'file:shared', {
+        fileId: data.fileId,
+        sharedWith: data.users,
+        sharedBy: socket.user.name
+      });
+    });
+
+    socket.on('file:comment', (data) => {
+      this.emitFileEvent(data.projectId, 'file:comment_added', {
+        fileId: data.fileId,
+        comment: data.comment,
+        author: socket.user.name
+      });
+    });
+
+    // Milestone Widget Events
+    socket.on('milestone:create', (data) => {
+      this.emitMilestoneEvent(data.projectId, 'milestone:created', {
+        milestone: data.milestone,
+        createdBy: socket.user.name
+      });
+    });
+
+    socket.on('milestone:update', (data) => {
+      this.emitMilestoneEvent(data.projectId, 'milestone:updated', {
+        milestoneId: data.milestoneId,
+        updates: data.updates,
+        updatedBy: socket.user.name
+      });
+    });
+
+    socket.on('milestone:progress', (data) => {
+      this.emitMilestoneEvent(data.projectId, 'milestone:progress_updated', {
+        milestoneId: data.milestoneId,
+        oldProgress: data.oldProgress,
+        newProgress: data.newProgress,
+        updatedBy: socket.user.name
+      });
+    });
+
+    socket.on('milestone:complete', (data) => {
+      this.emitMilestoneEvent(data.projectId, 'milestone:completed', {
+        milestoneId: data.milestoneId,
+        completedBy: socket.user.name
+      });
+    });
+
+    // Team Management Widget Events
+    socket.on('team:member_add', (data) => {
+      this.emitTeamEvent(data.projectId, 'team:member_added', {
+        member: data.member,
+        addedBy: socket.user.name
+      });
+    });
+
+    socket.on('team:member_remove', (data) => {
+      this.emitTeamEvent(data.projectId, 'team:member_removed', {
+        memberId: data.memberId,
+        memberName: data.memberName,
+        removedBy: socket.user.name
+      });
+    });
+
+    socket.on('team:role_change', (data) => {
+      this.emitTeamEvent(data.projectId, 'team:role_changed', {
+        memberId: data.memberId,
+        oldRole: data.oldRole,
+        newRole: data.newRole,
+        changedBy: socket.user.name
+      });
+    });
+
+    // Project Overview Widget Events
+    socket.on('project:status_change', (data) => {
+      this.emitProjectEvent(data.projectId, 'project:status_changed', {
+        oldStatus: data.oldStatus,
+        newStatus: data.newStatus,
+        changedBy: socket.user.name
+      });
+    });
+
+    socket.on('project:update', (data) => {
+      this.emitProjectEvent(data.projectId, 'project:updated', {
+        updates: data.updates,
+        updatedBy: socket.user.name
+      });
+    });
+
+    // Notification Widget Events
+    socket.on('notification:read', (data) => {
+      this.emitNotificationEvent(socket.userId, 'notification:marked_read', {
+        notificationId: data.notificationId
+      });
+    });
+
+    socket.on('notification:snooze', (data) => {
+      this.emitNotificationEvent(socket.userId, 'notification:snoozed', {
+        notificationId: data.notificationId,
+        snoozeUntil: data.snoozeUntil
+      });
+    });
+
+    // Real-time collaboration events
+    socket.on('user:cursor_move', (data) => {
+      this.emitCollaborationEvent(data.projectId, 'user:cursor_moved', {
+        userId: socket.userId,
+        userName: socket.user.name,
+        position: data.position,
+        element: data.element
+      });
+    });
+
+    socket.on('user:selection', (data) => {
+      this.emitCollaborationEvent(data.projectId, 'user:selection_changed', {
+        userId: socket.userId,
+        userName: socket.user.name,
+        selection: data.selection
+      });
+    });
+  }
+
+  // Enhanced communication events
+  emitMessageEvent(projectId, eventType, data) {
+    this.io.to(`project_${projectId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Enhanced file management events
+  emitFileEvent(projectId, eventType, data) {
+    this.io.to(`project_${projectId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Enhanced milestone events
+  emitMilestoneEvent(projectId, eventType, data) {
+    this.io.to(`project_${projectId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Enhanced notification events
+  emitNotificationEvent(userId, eventType, data) {
+    this.io.to(`user_${userId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Team management events
+  emitTeamEvent(projectId, eventType, data) {
+    this.io.to(`project_${projectId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Project overview events
+  emitProjectEvent(projectId, eventType, data) {
+    this.io.to(`project_${projectId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Real-time collaboration events
+  emitCollaborationEvent(projectId, eventType, data) {
+    this.io.to(`project_${projectId}`).emit(eventType, {
+      ...data,
+      timestamp: new Date()
+    });
+  }
+
+  // Enhanced presence and activity tracking
+  broadcastUserActivity(userId, projectId, activity) {
+    this.io.to(`project_${projectId}`).emit('user:activity', {
+      userId,
+      activity,
+      timestamp: new Date()
+    });
+  }
+
+  // Real-time analytics updates
+  broadcastAnalyticsUpdate(projectId, analyticsType, data) {
+    this.io.to(`project_${projectId}`).emit('analytics:updated', {
+      type: analyticsType,
+      data,
+      timestamp: new Date()
+    });
+  }
+
+  // Widget refresh events
+  requestWidgetRefresh(projectId, widgetType) {
+    this.io.to(`project_${projectId}`).emit('widget:refresh_requested', {
+      widgetType,
+      timestamp: new Date()
+    });
+  }
+
+  // Bulk operation events
+  emitBulkOperationEvent(projectId, operationType, data) {
+    this.io.to(`project_${projectId}`).emit('bulk_operation:completed', {
+      operationType,
+      ...data,
+      timestamp: new Date()
     });
   }
 

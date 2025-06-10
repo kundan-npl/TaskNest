@@ -9,7 +9,13 @@ const {
   uploadTaskAttachment,
   addComment,
   updateTaskProgress,
-  assignTask
+  assignTask,
+  bulkUpdateTasks,
+  bulkDeleteTasks,
+  bulkAssignTasks,
+  moveTasksToStatus,
+  getTaskAnalytics,
+  searchTasks
 } = require('../controllers/task.controller');
 const { protect } = require('../middleware/auth/auth');
 
@@ -20,6 +26,16 @@ router.use(protect);
 router.route('/')
   .get(getTasks)
   .post(createTask);
+
+// Bulk operations
+router.put('/bulk-update', bulkUpdateTasks);
+router.delete('/bulk-delete', bulkDeleteTasks);
+router.put('/bulk-assign', bulkAssignTasks);
+router.put('/move-status', moveTasksToStatus);
+
+// Task analytics and search
+router.get('/analytics', getTaskAnalytics);
+router.get('/search', searchTasks);
 
 router.route('/:id')
   .get(getTask)

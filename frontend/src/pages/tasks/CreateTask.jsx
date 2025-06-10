@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import projectService from '../../services/projectService';
 import taskService from '../../services/taskService';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { getPermissions } from '../../utils/projectHelpers';
 import { 
   PlusIcon, 
   TrashIcon, 
@@ -29,14 +30,27 @@ const CreateTask = () => {
   const [project, setProject] = useState(null);
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
+  const [userRole, setUserRole] = useState(null);
+  const [permissions, setPermissions] = useState(null);
   
+  // Status options matching backend
+  const statusOptions = [
+    { value: 'todo', label: '🚀 Not Started' },
+    { value: 'in-progress', label: '⚡ In Progress' },
+    { value: 'review', label: '📝 In Review' },
+    { value: 'done', label: '✅ Completed' },
+    { value: 'cancelled', label: '❌ Cancelled' }
+  ];
+
+  // Allow assigning to multiple members
+  // Change assignedTo to an array
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    status: 'not-started',
+    status: 'todo',
     priority: 'medium',
     dueDate: dateParam || '',
-    assignedTo: '',
+    assignedTo: [], // now an array
     projectId: projectId || '',
     subtasks: []
   });
@@ -55,24 +69,41 @@ const CreateTask = () => {
     try {
       setLoading(true);
       
-      // In a real implementation, we would fetch data from the API
-      // const project = await projectService.getProjectById(projectId);
-      // const members = await projectService.getProjectMembers(projectId);
+      // Fetch project data and members from the API
+      const [projectData, membersData] = await Promise.all([
+        projectService.getProjectById(projectId),
+        projectService.getProjectMembers(projectId)
+      ]);
       
-      // For now, let's use mock data
-      const mockProject = {
-        id: projectId,
-        name: 'TaskNest Frontend Development'
-      };
+      setProject(projectData);
+      setMembers(membersData);
       
-      const mockMembers = [
-        { id: '1', name: 'John Doe', avatar: 'https://i.pravatar.cc/150?img=1' },
-        { id: '2', name: 'Jane Smith', avatar: 'https://i.pravatar.cc/150?img=2' },
-        { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' }
-      ];
-      
-      setProject(mockProject);
-      setMembers(mockMembers);
+      // Check user permissions for this project
+      if (projectData.members) {
+        // Use the correct user ID field - try both _id and id
+        const userId = currentUser._id || currentUser.id;
+        const userMember = projectData.members.find(member => {
+          const memberUserId = member.user._id || member.user.id || member.user;
+          return memberUserId === userId;
+        });
+        
+        if (userMember) {
+          setUserRole(userMember.role);
+          const userPermissions = getPermissions(userMember.role);
+          setPermissions(userPermissions);
+          
+          // Check if user can create tasks
+          if (!userPermissions.canCreateTasks) {
+            toast.error('You do not have permission to create tasks in this project');
+            navigate(`/projects/${projectId}`);
+            return;
+          }
+        } else {
+          toast.error('You are not a member of this project');
+          navigate(`/projects/${projectId}`);
+          return;
+        }
+      }
     } catch (error) {
       toast.error(error.message || 'Failed to load project data');
       navigate(`/projects/${projectId}`);
@@ -85,24 +116,13 @@ const CreateTask = () => {
     try {
       setLoading(true);
       
-      // In a real implementation, we would fetch data from the API
-      // const projects = await projectService.getAllProjects();
+      // Fetch all projects from the API
+      const projectsData = await projectService.getAllProjects();
       
-      // For now, let's use mock data
-      const mockProjects = [
-        { id: '1', name: 'TaskNest Frontend Development' },
-        { id: '2', name: 'TaskNest Backend Development' },
-        { id: '3', name: 'Mobile App Development' }
-      ];
-      
-      const mockMembers = [
-        { id: '1', name: 'John Doe', avatar: 'https://i.pravatar.cc/150?img=1' },
-        { id: '2', name: 'Jane Smith', avatar: 'https://i.pravatar.cc/150?img=2' },
-        { id: '3', name: 'Shobha Sharma', avatar: 'https://i.pravatar.cc/150?img=3' }
-      ];
-      
-      setProjects(mockProjects);
-      setMembers(mockMembers);
+      // For task creation when no specific project is selected, we'll use an empty members array
+      // Members will be fetched when a project is selected
+      setProjects(projectsData);
+      setMembers([]);
     } catch (error) {
       toast.error(error.message || 'Failed to load projects');
       navigate('/tasks');
@@ -117,6 +137,23 @@ const CreateTask = () => {
       ...prevState,
       [name]: value
     }));
+
+    // If project is changed, fetch the members for the selected project
+    if (name === 'projectId' && value) {
+      fetchProjectMembers(value);
+    } else if (name === 'projectId' && !value) {
+      setMembers([]);
+    }
+  };
+
+  const fetchProjectMembers = async (selectedProjectId) => {
+    try {
+      const membersData = await projectService.getProjectMembers(selectedProjectId);
+      setMembers(membersData);
+    } catch (error) {
+      toast.error(error.message || 'Failed to load project members');
+      setMembers([]);
+    }
   };
 
   const handleAddSubtask = () => {
@@ -143,6 +180,18 @@ const CreateTask = () => {
     try {
       setSubmitting(true);
       
+      // Check permissions before submitting
+      if (permissions && !permissions.canCreateTasks) {
+        toast.error('You do not have permission to create tasks');
+        return;
+      }
+      
+      // If assigning task to someone, check assignment permissions
+      if (formData.assignedTo && permissions && !permissions.canAssignTasks) {
+        toast.error('You do not have permission to assign tasks');
+        return;
+      }
+      
       // Validate form
       if (!formData.title.trim()) {
         toast.error('Task title is required');
@@ -159,11 +208,12 @@ const CreateTask = () => {
         return;
       }
       
-      // In a real implementation, we would call the API
-      // await taskService.createTask(formData.projectId, formData);
+      let status = formData.status;
+      if (status === 'not-started') status = 'todo';
+      if (status === 'completed') status = 'done';
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Send assignedTo as array
+      await taskService.createTask(formData.projectId, { ...formData, status, assignedTo: formData.assignedTo });
       
       toast.success('Task created successfully');
       
@@ -328,10 +378,9 @@ const CreateTask = () => {
                     value={formData.status}
                     onChange={handleChange}
                   >
-                    <option value="not-started">🚀 Not Started</option>
-                    <option value="in-progress">⚡ In Progress</option>
-                    <option value="on-hold">⏸️ On Hold</option>
-                    <option value="completed">✅ Completed</option>
+                    {statusOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                 </div>
                 
@@ -371,27 +420,46 @@ const CreateTask = () => {
                 </div>
               </div>
               
-              {/* Assigned To */}
-              <div className="space-y-2">
-                <label htmlFor="assignedTo" className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
-                  <UserGroupIcon className="h-4 w-4 text-indigo-500" />
-                  <span>Assigned To</span>
-                </label>
-                <select
-                  id="assignedTo"
-                  name="assignedTo"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
-                  value={formData.assignedTo}
-                  onChange={handleChange}
-                >
-                  <option value="">👤 Unassigned</option>
-                  {members.map(member => (
-                    <option key={member.id} value={member.id}>
-                      👤 {member.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Assigned To - Only show if user has assignment permissions */}
+              {(!permissions || permissions.canAssignTasks) && (
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                    <UserGroupIcon className="h-4 w-4 text-indigo-500" />
+                    <span>Assigned To</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {members.map(member => {
+                      const memberId = member.user._id || member.user.id || member.user;
+                      const checked = formData.assignedTo.includes(memberId);
+                      return (
+                        <label
+                          key={memberId}
+                          className={`inline-flex items-center px-3 py-1 bg-white border border-gray-200 rounded-full text-xs cursor-pointer shadow-sm hover:bg-indigo-50 transition-all max-w-none whitespace-nowrap ${checked ? 'ring-2 ring-indigo-400' : ''}`}
+                          style={{ minWidth: '120px', maxWidth: '220px' }}
+                          title={member.user.name}
+                        >
+                          <input
+                            type="checkbox"
+                            className="form-checkbox h-4 w-4 text-indigo-600 mr-1 accent-indigo-600"
+                            checked={checked}
+                            onChange={e => {
+                              setFormData(prev => {
+                                const assignedTo = checked
+                                  ? prev.assignedTo.filter(id => id !== memberId)
+                                  : [...prev.assignedTo, memberId];
+                                return { ...prev, assignedTo };
+                              });
+                            }}
+                          />
+                          <span className="font-medium overflow-hidden text-ellipsis" style={{maxWidth: '120px', display: 'inline-block', whiteSpace: 'nowrap', verticalAlign: 'middle'}}>{member.user.name}</span>
+                          <span className="ml-1 text-gray-400 font-normal">({member.role})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Assign to one or more team members</p>
+                </div>
+              )}
               
               {/* Subtasks Section */}
               <div className="space-y-4">

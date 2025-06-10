@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const Project = require('../models/project.model');
 const Discussion = require('../models/discussion.model');
 const socketService = require('../services/socketService');
-const { createNotification } = require('./notification.controller');
+const Notification = require('../models/notification.model');
 
 // Message Schema for real-time chat
 const MessageSchema = new mongoose.Schema({
@@ -200,15 +200,24 @@ exports.createDiscussion = async (req, res, next) => {
       .map(member => member.user._id || member.user);
 
     if (memberIds.length > 0) {
-      await createNotification({
-        type: 'discussion_created',
-        message: `New discussion "${discussion.title}" started in ${project.title}`,
-        users: memberIds,
-        data: { 
-          projectId: projectId, 
-          discussionId: discussion._id 
-        }
-      });
+      const Notification = require('../models/notification.model');
+      const notifications = [];
+      
+      for (const memberId of memberIds) {
+        notifications.push({
+          title: 'New Discussion',
+          message: `New discussion "${discussion.title}" started in ${project.title}`,
+          type: 'discussion_created',
+          recipient: memberId,
+          sender: req.user.id,
+          relatedProject: projectId,
+          relatedDiscussion: discussion._id,
+          actionUrl: `/projects/${projectId}/discussions/${discussion._id}`,
+          metadata: { discussionTitle: discussion.title }
+        });
+      }
+      
+      await Notification.insertMany(notifications);
     }
 
     res.status(201).json({
@@ -356,21 +365,29 @@ exports.sendMessage = async (req, res, next) => {
 
     // Create notifications for mentions
     if (mentions && mentions.length > 0) {
+      const Notification = require('../models/notification.model');
       const mentionedUserIds = mentions
         .filter(mention => mention.type === 'user')
         .map(mention => mention.user);
 
       if (mentionedUserIds.length > 0) {
-        await createNotification({
-          type: 'message_mention',
-          message: `${req.user.name} mentioned you in ${project.title}`,
-          users: mentionedUserIds,
-          data: { 
-            projectId: projectId, 
-            messageId: message._id,
-            content: content.substring(0, 100) 
-          }
-        });
+        const notifications = [];
+        for (const userId of mentionedUserIds) {
+          notifications.push({
+            title: 'You were mentioned',
+            message: `${req.user.name} mentioned you in ${project.title}`,
+            type: 'discussion_reply', // Using existing enum value
+            recipient: userId,
+            sender: req.user.id,
+            relatedProject: projectId,
+            actionUrl: `/projects/${projectId}/messages`,
+            metadata: { 
+              messageId: message._id,
+              content: content.substring(0, 100) 
+            }
+          });
+        }
+        await Notification.insertMany(notifications);
       }
 
       // Handle @all mentions
@@ -379,16 +396,25 @@ exports.sendMessage = async (req, res, next) => {
           .filter(member => (member.user._id || member.user).toString() !== req.user.id)
           .map(member => member.user._id || member.user);
 
-        await createNotification({
-          type: 'message_all',
-          message: `${req.user.name} mentioned everyone in ${project.title}`,
-          users: allMemberIds,
-          data: { 
-            projectId: projectId, 
-            messageId: message._id,
-            content: content.substring(0, 100) 
-          }
-        });
+        const allNotifications = [];
+        for (const userId of allMemberIds) {
+          allNotifications.push({
+            title: 'Everyone was mentioned',
+            message: `${req.user.name} mentioned everyone in ${project.title}`,
+            type: 'discussion_reply', // Using existing enum value
+            recipient: userId,
+            sender: req.user.id,
+            relatedProject: projectId,
+            actionUrl: `/projects/${projectId}/messages`,
+            metadata: { 
+              messageId: message._id,
+              content: content.substring(0, 100) 
+            }
+          });
+        }
+        if (allNotifications.length > 0) {
+          await Notification.insertMany(allNotifications);
+        }
       }
     }
 
