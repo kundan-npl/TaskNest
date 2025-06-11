@@ -3,15 +3,16 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import authService from '../../services/authService';
 
-const ResetPassword = () => {
+const ResetPassword = (props) => {
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: '',
   });
   const [loading, setLoading] = useState(false);
   const [isValidToken, setIsValidToken] = useState(true);
-  const { resettoken } = useParams();
+  const { resettoken: paramToken } = useParams();
   const navigate = useNavigate();
+  const resettoken = props.resettoken || paramToken;
   
   const { password, confirmPassword } = formData;
 
@@ -47,7 +48,7 @@ const ResetPassword = () => {
       setLoading(true);
       await authService.resetPassword(resettoken, password);
       toast.success('Password has been reset successfully');
-      navigate('/login');
+      navigate('/auth/login');
     } catch (error) {
       setIsValidToken(false);
       toast.error(error.message || 'Failed to reset password. The link may have expired.');

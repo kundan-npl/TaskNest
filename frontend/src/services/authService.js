@@ -29,9 +29,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear token on unauthorized response
+      // Only clear token, do not redirect globally
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // window.location.href = '/login'; // REMOVE THIS LINE
     }
     return Promise.reject(error);
   }

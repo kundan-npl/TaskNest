@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import projectService from '../../services/projectService';
 import taskService from '../../services/taskService';
@@ -18,98 +18,85 @@ import {
   SparklesIcon
 } from '@heroicons/react/24/outline';
 
-const CreateTask = () => {
-  const { projectId } = useParams();
+const EditTask = () => {
+  const { id: taskId, projectId } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [searchParams] = useSearchParams();
-  const dateParam = searchParams.get('date');
-  
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [project, setProject] = useState(null);
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
   const [userRole, setUserRole] = useState(null);
   const [permissions, setPermissions] = useState(null);
-  const [isProjectTask, setIsProjectTask] = useState(false); // For calendar/personal task toggle
-  
-  // Status options matching backend
-  const statusOptions = [
-    { value: 'todo', label: '🚀 Not Started' },
-    { value: 'in-progress', label: '⚡ In Progress' },
-    { value: 'review', label: '📝 In Review' },
-    { value: 'done', label: '✅ Completed' },
-    { value: 'cancelled', label: '❌ Cancelled' }
-  ];
-
-  // Allow assigning to multiple members
-  // Change assignedTo to an array
+  const [isProjectTask, setIsProjectTask] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     status: 'todo',
     priority: 'medium',
-    dueDate: dateParam || '',
-    assignedTo: [], // now an array
+    dueDate: '',
+    assignedTo: [],
     projectId: projectId || '',
     subtasks: []
   });
-  
   const [newSubtask, setNewSubtask] = useState('');
 
   useEffect(() => {
-    if (projectId) {
-      setIsProjectTask(true); // Always true for project context
-      fetchProjectData();
-    } else {
-      setIsProjectTask(false); // Default to personal task for calendar
-      fetchAllProjects();
-    }
-  }, [projectId]);
+    const fetchTask = async () => {
+      try {
+        setLoading(true);
+        const task = await taskService.getTaskByIdSimple(taskId);
+        setFormData({
+          title: task.title || '',
+          description: task.description || '',
+          status: task.status || 'todo',
+          priority: task.priority || 'medium',
+          dueDate: task.dueDate ? task.dueDate.split('T')[0] : '',
+          assignedTo: (task.assignedTo && Array.isArray(task.assignedTo)) ? task.assignedTo.map(u => u._id || u.id || u) : [],
+          projectId: task.projectId || '',
+          subtasks: task.subtasks || []
+        });
+        if (task.projectId) {
+          setIsProjectTask(true);
+          fetchProjectData(task.projectId);
+        } else {
+          setIsProjectTask(false);
+          fetchAllProjects();
+        }
+      } catch (error) {
+        toast.error('Failed to load task');
+        navigate('/tasks');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTask();
+    // eslint-disable-next-line
+  }, [taskId]);
 
-  const fetchProjectData = async () => {
+  const fetchProjectData = async (projId) => {
     try {
       setLoading(true);
-      
-      // Fetch project data and members from the API
       const [projectData, membersData] = await Promise.all([
-        projectService.getProjectById(projectId),
-        projectService.getProjectMembers(projectId)
+        projectService.getProjectById(projId),
+        projectService.getProjectMembers(projId)
       ]);
-      
       setProject(projectData);
       setMembers(membersData);
-      
-      // Check user permissions for this project
       if (projectData.members) {
-        // Use the correct user ID field - try both _id and id
         const userId = currentUser._id || currentUser.id;
         const userMember = projectData.members.find(member => {
           const memberUserId = member.user._id || member.user.id || member.user;
           return memberUserId === userId;
         });
-        
         if (userMember) {
           setUserRole(userMember.role);
-          const userPermissions = getPermissions(userMember.role);
-          setPermissions(userPermissions);
-          
-          // Check if user can create tasks
-          if (!userPermissions.canCreateTasks) {
-            toast.error('You do not have permission to create tasks in this project');
-            navigate(`/projects/${projectId}`);
-            return;
-          }
-        } else {
-          toast.error('You are not a member of this project');
-          navigate(`/projects/${projectId}`);
-          return;
+          setPermissions(getPermissions(userMember.role));
         }
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to load project data');
-      navigate(`/projects/${projectId}`);
+      toast.error('Failed to load project data');
     } finally {
       setLoading(false);
     }
@@ -118,17 +105,11 @@ const CreateTask = () => {
   const fetchAllProjects = async () => {
     try {
       setLoading(true);
-      
-      // Fetch all projects from the API
       const projectsData = await projectService.getAllProjects();
-      
-      // For task creation when no specific project is selected, we'll use an empty members array
-      // Members will be fetched when a project is selected
       setProjects(projectsData);
       setMembers([]);
     } catch (error) {
-      toast.error(error.message || 'Failed to load projects');
-      navigate('/tasks');
+      toast.error('Failed to load projects');
     } finally {
       setLoading(false);
     }
@@ -136,12 +117,7 @@ const CreateTask = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prevState => ({
-      ...prevState,
-      [name]: value
-    }));
-
-    // If project is changed, fetch the members for the selected project
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'projectId' && value) {
       fetchProjectMembers(value);
     } else if (name === 'projectId' && !value) {
@@ -154,84 +130,46 @@ const CreateTask = () => {
       const membersData = await projectService.getProjectMembers(selectedProjectId);
       setMembers(membersData);
     } catch (error) {
-      toast.error(error.message || 'Failed to load project members');
+      toast.error('Failed to load project members');
       setMembers([]);
     }
   };
 
   const handleAddSubtask = () => {
     if (!newSubtask.trim()) return;
-    
-    setFormData(prevState => ({
-      ...prevState,
-      subtasks: [...prevState.subtasks, { title: newSubtask.trim(), completed: false }]
-    }));
-    
+    setFormData(prev => ({ ...prev, subtasks: [...prev.subtasks, { title: newSubtask.trim(), completed: false }] }));
     setNewSubtask('');
   };
 
   const handleRemoveSubtask = (index) => {
-    setFormData(prevState => ({
-      ...prevState,
-      subtasks: prevState.subtasks.filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, subtasks: prev.subtasks.filter((_, i) => i !== index) }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     try {
       setSubmitting(true);
-      
-      // Check permissions before submitting
-      if (permissions && !permissions.canCreateTasks) {
-        toast.error('You do not have permission to create tasks');
-        return;
-      }
-      
-      // If assigning task to someone, check assignment permissions
-      if (formData.assignedTo && permissions && !permissions.canAssignTasks) {
-        toast.error('You do not have permission to assign tasks');
-        return;
-      }
-      
-      // Validate form
       if (!formData.title.trim()) {
         toast.error('Task title is required');
         return;
       }
-      
-      if (!formData.projectId && isProjectTask) {
-        toast.error('Please select a project');
-        return;
-      }
-      
       if (!formData.dueDate) {
         toast.error('Due date is required');
         return;
       }
-      
       let status = formData.status;
       if (status === 'not-started') status = 'todo';
       if (status === 'completed') status = 'done';
-      
-      // Send assignedTo as array
-      let submitData = { ...formData };
-      if (!projectId && !isProjectTask) {
-        submitData.projectId = '';
-      }
-      await taskService.createTask(formData.projectId, { ...submitData, status, assignedTo: formData.assignedTo });
-      
-      toast.success('Task created successfully');
-      
-      // Navigate based on the source
-      if (projectId) {
-        navigate(`/projects/${projectId}`);
+      let submitData = { ...formData, status, assignedTo: formData.assignedTo };
+      await taskService.updateTask(formData.projectId, taskId, submitData);
+      toast.success('Task updated successfully');
+      if (formData.projectId) {
+        navigate(`/projects/${formData.projectId}`);
       } else {
         navigate('/tasks');
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to create task');
+      toast.error('Failed to update task');
     } finally {
       setSubmitting(false);
     }
@@ -239,16 +177,8 @@ const CreateTask = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent absolute top-0 left-0"></div>
-            </div>
-            <p className="mt-4 text-gray-600 font-medium">Loading project details...</p>
-          </div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
       </div>
     );
   }
@@ -256,11 +186,10 @@ const CreateTask = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="container mx-auto px-4 py-8">
-        {/* Header Section */}
         <div className="mb-8">
           <div className="flex items-center space-x-4 mb-4">
             <button
-              onClick={() => projectId ? navigate(`/projects/${projectId}`) : navigate('/tasks')}
+              onClick={() => formData.projectId ? navigate(`/projects/${formData.projectId}`) : navigate('/tasks')}
               className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-md hover:shadow-lg transition-all duration-200 text-gray-600 hover:text-blue-600"
             >
               <ArrowLeftIcon className="h-5 w-5" />
@@ -271,17 +200,15 @@ const CreateTask = () => {
                   <SparklesIcon className="h-6 w-6" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">Create New Task</h1>
-                  <p className="text-gray-600 mt-1">
-                    {project ? `Adding task to ${project.name}` : 'Create a new task and assign it to a project'}
-                  </p>
+                  <h1 className="text-3xl font-bold text-gray-900">Edit Task</h1>
                 </div>
               </div>
+              <p className="text-gray-600 mt-1">
+                {project ? `Editing task in ${project.name}` : 'Edit your task details'}
+              </p>
             </div>
           </div>
         </div>
-        
-        {/* Main Form Card */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
           <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-8 py-6">
             <h2 className="text-xl font-semibold text-white flex items-center space-x-2">
@@ -289,58 +216,9 @@ const CreateTask = () => {
               <span>Task Details</span>
             </h2>
           </div>
-          
           <form onSubmit={handleSubmit} className="p-8">
             <div className="space-y-8">
-              {/* Project Selection - Only show if no projectId in URL */}
-              {!projectId && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-0">
-                      <UserGroupIcon className="h-4 w-4 text-blue-500" />
-                      <span>Is this task related to any project?</span>
-                    </label>
-                    <span className={`text-sm font-medium ${!isProjectTask ? 'text-blue-600' : 'text-gray-400'}`}>No</span>
-                    <button
-                      type="button"
-                      className={`relative inline-flex h-6 w-12 border-2 border-blue-300 rounded-full transition-colors duration-200 focus:outline-none mx-1 ${isProjectTask ? 'bg-blue-600' : 'bg-gray-200'}`}
-                      onClick={() => setIsProjectTask((prev) => !prev)}
-                      aria-pressed={isProjectTask}
-                    >
-                      <span
-                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${isProjectTask ? 'translate-x-6' : 'translate-x-1'}`}
-                      />
-                    </button>
-                    <span className={`text-sm font-medium ${isProjectTask ? 'text-blue-600' : 'text-gray-400'}`}>Yes</span>
-                  </div>
-                  {isProjectTask && (
-                    <div className="space-y-2">
-                      <label htmlFor="projectId" className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
-                        <UserGroupIcon className="h-4 w-4 text-blue-500" />
-                        <span>Project *</span>
-                      </label>
-                      <select
-                        id="projectId"
-                        name="projectId"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white text-gray-900"
-                        value={formData.projectId}
-                        onChange={handleChange}
-                        required={isProjectTask}
-                      >
-                        <option value="">Select a project</option>
-                        {Array.isArray(projects) && projects.map(proj => (
-                          <option key={proj._id || proj.id} value={proj._id || proj.id}>{proj.name || proj.title || proj.projectName}</option>
-                        ))}
-                      </select>
-                      {Array.isArray(projects) && projects.length === 0 && (
-                        <div className="text-xs text-red-500 mt-1">No projects found. Please create a project first.</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Task Title */}
+              {/* Title */}
               <div className="space-y-2">
                 <label htmlFor="title" className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
                   <SparklesIcon className="h-4 w-4 text-purple-500" />
@@ -357,7 +235,6 @@ const CreateTask = () => {
                   required
                 />
               </div>
-              
               {/* Description */}
               <div className="space-y-2">
                 <label htmlFor="description" className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
@@ -374,7 +251,6 @@ const CreateTask = () => {
                   placeholder="Describe the task objectives, requirements, and any important details..."
                 ></textarea>
               </div>
-              
               {/* Status, Priority, Due Date Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
@@ -389,12 +265,13 @@ const CreateTask = () => {
                     value={formData.status}
                     onChange={handleChange}
                   >
-                    {statusOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
+                    <option value="todo">🚀 Not Started</option>
+                    <option value="in-progress">⚡ In Progress</option>
+                    <option value="review">📝 In Review</option>
+                    <option value="done">✅ Completed</option>
+                    <option value="cancelled">❌ Cancelled</option>
                   </select>
                 </div>
-                
                 <div className="space-y-2">
                   <label htmlFor="priority" className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
                     <FlagIcon className="h-4 w-4 text-red-500" />
@@ -412,7 +289,6 @@ const CreateTask = () => {
                     <option value="high">🔴 High Priority</option>
                   </select>
                 </div>
-                
                 <div className="space-y-2">
                   <label htmlFor="dueDate" className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
                     <CalendarIcon className="h-4 w-4 text-orange-500" />
@@ -430,7 +306,6 @@ const CreateTask = () => {
                   />
                 </div>
               </div>
-              
               {/* Assigned To - Only show if user has assignment permissions */}
               {(!permissions || permissions.canAssignTasks) && members.length > 0 && (
                 <div className="space-y-2">
@@ -470,7 +345,6 @@ const CreateTask = () => {
                   </div>
                 </div>
               )}
-              
               {/* Subtasks Section */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
@@ -484,7 +358,6 @@ const CreateTask = () => {
                     </span>
                   </div>
                 </div>
-                
                 {/* Add Subtask Input */}
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                   <div className="flex space-x-3">
@@ -493,8 +366,8 @@ const CreateTask = () => {
                       placeholder="Add a new subtask..."
                       className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all duration-200 bg-white"
                       value={newSubtask}
-                      onChange={(e) => setNewSubtask(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSubtask())}
+                      onChange={e => setNewSubtask(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), handleAddSubtask())}
                     />
                     <button
                       type="button"
@@ -506,7 +379,6 @@ const CreateTask = () => {
                     </button>
                   </div>
                 </div>
-                
                 {/* Subtasks List */}
                 {formData.subtasks.length === 0 ? (
                   <div className="text-center py-8 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl border border-gray-200">
@@ -532,9 +404,7 @@ const CreateTask = () => {
                           />
                           <label 
                             htmlFor={`subtask-${index}`}
-                            className={`ml-4 flex-1 text-sm font-medium cursor-pointer transition-all duration-200 ${
-                              subtask.completed ? 'text-gray-400 line-through' : 'text-gray-700 hover:text-gray-900'
-                            }`}
+                            className={`ml-4 flex-1 text-sm font-medium cursor-pointer transition-all duration-200 ${subtask.completed ? 'text-gray-400 line-through' : 'text-gray-700 hover:text-gray-900'}`}
                           >
                             {subtask.title}
                           </label>
@@ -552,12 +422,11 @@ const CreateTask = () => {
                 )}
               </div>
             </div>
-            
             {/* Action Buttons */}
             <div className="flex justify-end space-x-4 mt-8 pt-6 border-t border-gray-200">
               <button
                 type="button"
-                onClick={() => projectId ? navigate(`/projects/${projectId}`) : navigate('/tasks')}
+                onClick={() => formData.projectId ? navigate(`/projects/${formData.projectId}`) : navigate('/tasks')}
                 className="px-8 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all duration-200"
               >
                 Cancel
@@ -570,12 +439,12 @@ const CreateTask = () => {
                 {submitting ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                    <span>Creating...</span>
+                    <span>Updating...</span>
                   </>
                 ) : (
                   <>
                     <SparklesIcon className="h-5 w-5" />
-                    <span>Create Task</span>
+                    <span>Update Task</span>
                   </>
                 )}
               </button>
@@ -587,4 +456,4 @@ const CreateTask = () => {
   );
 };
 
-export default CreateTask;
+export default EditTask;

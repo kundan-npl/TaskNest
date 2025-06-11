@@ -102,7 +102,6 @@ const fileRoutes = require('./src/routes/file.routes');
 const notificationRoutes = require('./src/routes/notification.routes');
 const discussionRoutes = require('./src/routes/discussion.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
-const mockS3Routes = require('./src/routes/mock-s3.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -113,11 +112,6 @@ app.use(`${API_PREFIX}/files`, fileRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/discussions`, discussionRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
-
-// Mount mock S3 routes for development
-if (process.env.NODE_ENV === 'development' || !process.env.AWS_ACCESS_KEY_ID) {
-  app.use(`${API_PREFIX}/files/mock`, mockS3Routes);
-}
 
 // Health check route
 app.get('/health', (req, res) => {

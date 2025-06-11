@@ -97,7 +97,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     setToken(null);
     setCurrentUser(null);
-    navigate('/login');
+    navigate('/auth/login');
   };
 
   // Check if user has a specific role

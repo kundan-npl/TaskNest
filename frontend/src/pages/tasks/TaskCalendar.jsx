@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import taskService from '../../services/taskService';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
@@ -9,8 +9,7 @@ const TaskCalendar = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [dateTasksModalOpen, setDateTasksModalOpen] = useState(false);
+  const navigate = useNavigate();
   
   useEffect(() => {
     fetchTasks();
@@ -148,8 +147,8 @@ const TaskCalendar = () => {
   // Handle day click
   const handleDayClick = (day) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    setSelectedDate(date);
-    setDateTasksModalOpen(true);
+    // Redirect directly to create task page with date param
+    navigate(`/tasks/create?date=${date.toISOString().split('T')[0]}`);
   };
   
   // Render calendar
@@ -299,112 +298,6 @@ const TaskCalendar = () => {
           </div>
         </div>
       </div>
-      
-      {/* Date Tasks Modal */}
-      {dateTasksModalOpen && selectedDate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">
-                Tasks for {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </h2>
-              <button 
-                onClick={() => setDateTasksModalOpen(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {getTasksForDay(selectedDate.getDate()).length > 0 ? (
-                getTasksForDay(selectedDate.getDate()).map(task => (
-                  <div key={task.id} className="border rounded-lg overflow-hidden">
-                    <div className={`p-3 ${
-                      task.status === 'completed' 
-                        ? 'bg-green-100' 
-                        : task.priority === 'high'
-                        ? 'bg-red-100'
-                        : task.priority === 'medium'
-                        ? 'bg-yellow-100'
-                        : 'bg-blue-100'
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <Link to={`/tasks/${task.id}`} className="font-medium hover:underline">
-                          {task.title}
-                        </Link>
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          task.status === 'completed' 
-                            ? 'bg-green-200 text-green-800' 
-                            : task.status === 'in-progress'
-                            ? 'bg-blue-200 text-blue-800'
-                            : 'bg-gray-200 text-gray-800'
-                        }`}>
-                          {task.status === 'in-progress' ? 'In Progress' : 
-                          task.status === 'not-started' ? 'Not Started' : 
-                          task.status.charAt(0).toUpperCase() + task.status.slice(1)}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white p-3">
-                      <div className="text-sm text-gray-700 mb-2">
-                        Project: <Link to={`/projects/${task.projectId}`} className="text-primary-600 hover:underline">{task.projectName}</Link>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center">
-                          <span className="text-gray-500 mr-1">Assigned to:</span>
-                          <div className="flex items-center">
-                            <img 
-                              src={task.assignedTo.avatar}
-                              alt={task.assignedTo.name}
-                              className="w-5 h-5 rounded-full mr-1"
-                            />
-                            <span>{task.assignedTo.name}</span>
-                          </div>
-                        </div>
-                        <Link to={`/tasks/${task.id}`} className="text-primary-600 hover:underline">
-                          View Details
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-6 text-gray-500">
-                  No tasks scheduled for this date
-                </div>
-              )}
-            </div>
-            
-            <div className="mt-6 flex justify-end">
-              <div className="flex space-x-2">
-                <Link 
-                  to={`/tasks/create?date=${selectedDate.toISOString().split('T')[0]}`}
-                  className="btn-secondary flex items-center"
-                >
-                  <svg className="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Task for This Date
-                </Link>
-                <Link 
-                  to="/tasks/create" 
-                  className="btn-primary flex items-center"
-                >
-                  <svg className="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Task
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

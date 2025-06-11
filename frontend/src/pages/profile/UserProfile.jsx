@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext.jsx';
+import authService from '../../services/authService';
 
 const UserProfile = () => {
-  const { currentUser, updateUserProfile } = useAuth();
+  const { currentUser, updateProfile } = useAuth();
   
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     avatar: '',
-    bio: '',
-    role: ''
+    bio: ''
   });
   
   const [passwordData, setPasswordData] = useState({
@@ -26,8 +26,7 @@ const UserProfile = () => {
         name: currentUser.name || '',
         email: currentUser.email || '',
         avatar: currentUser.avatar || '',
-        bio: currentUser.bio || '',
-        role: currentUser.role || ''
+        bio: currentUser.bio || ''
       });
     }
   }, [currentUser]);
@@ -60,11 +59,13 @@ const UserProfile = () => {
         return;
       }
       
-      // In a real implementation, we would call the API
-      // await updateUserProfile(formData);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Only send updatable fields
+      const updateData = {
+        name: formData.name,
+        bio: formData.bio,
+        avatar: formData.avatar
+      };
+      await updateProfile(updateData);
       
       toast.success('Profile updated successfully');
     } catch (error) {
@@ -101,11 +102,11 @@ const UserProfile = () => {
         return;
       }
       
-      // In a real implementation, we would call the API
-      // await updateUserPassword(passwordData);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Call real API
+      await authService.api.put('/auth/updatepassword', {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      });
       
       toast.success('Password updated successfully');
       
@@ -116,7 +117,7 @@ const UserProfile = () => {
         confirmPassword: ''
       });
     } catch (error) {
-      toast.error(error.message || 'Failed to update password');
+      toast.error(error.response?.data?.error || error.message || 'Failed to update password');
     } finally {
       setLoading(false);
     }
@@ -192,24 +193,6 @@ const UserProfile = () => {
                     onChange={handleChange}
                     placeholder="Tell others about yourself..."
                   ></textarea>
-                </div>
-                
-                <div>
-                  <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-                    System Role
-                  </label>
-                  <input
-                    type="text"
-                    id="role"
-                    name="role"
-                    className="form-input w-full bg-gray-100"
-                    value={formData.role === 'admin' ? 'System Administrator' : formData.role === 'manager' ? 'Manager' : 'Team Member'}
-                    readOnly
-                    disabled
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Your project-specific roles may vary by project
-                  </p>
                 </div>
               </div>
               
@@ -297,74 +280,9 @@ const UserProfile = () => {
               </div>
             </form>
           </div>
-          
-          {/* Project Roles Section */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">My Project Roles</h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Your roles across different projects. These determine your permissions within each project.
-            </p>
-            
-            {/* Mock project roles data */}
-            <div className="space-y-4">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium text-gray-900">TaskNest Frontend Development</h3>
-                    <p className="text-sm text-gray-500">Active project • Due June 15, 2025</p>
-                  </div>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                    Supervisor
-                  </span>
-                </div>
-                <div className="mt-2 text-xs text-gray-500">
-                  Full project control, can manage all aspects including members and settings
-                </div>
-              </div>
-              
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium text-gray-900">TaskNest Backend API</h3>
-                    <p className="text-sm text-gray-500">Active project • Due June 1, 2025</p>
-                  </div>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Team Lead
-                  </span>
-                </div>
-                <div className="mt-2 text-xs text-gray-500">
-                  Can manage tasks, assign work, and coordinate team activities
-                </div>
-              </div>
-              
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium text-gray-900">TaskNest Database Design</h3>
-                    <p className="text-sm text-gray-500">Completed project • Completed May 15, 2025</p>
-                  </div>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Team Member
-                  </span>
-                </div>
-                <div className="mt-2 text-xs text-gray-500">
-                  Can work on assigned tasks and collaborate with team
-                </div>
-              </div>
-            </div>
-            
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-900 mb-2">Role Definitions</h4>
-              <div className="text-xs text-blue-800 space-y-1">
-                <div><strong>Supervisor:</strong> Full project control and member management</div>
-                <div><strong>Team Lead:</strong> Task management and team coordination</div>
-                <div><strong>Team Member:</strong> Task execution and collaboration</div>
-              </div>
-            </div>
-          </div>
         </div>
         
-        {/* Avatar and Stats */}
+        {/* Avatar Section Only */}
         <div>
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Profile Picture</h2>
@@ -403,32 +321,6 @@ const UserProfile = () => {
               <p className="text-xs text-gray-500 mt-2">
                 Recommended: Square image, 500x500 pixels or larger
               </p>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Account Statistics</h2>
-            
-            <div className="space-y-4">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-xs text-gray-500 mb-1">Account Created</div>
-                <div className="font-medium">May 10, 2025</div>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-xs text-gray-500 mb-1">Projects</div>
-                <div className="font-medium">7 projects</div>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-xs text-gray-500 mb-1">Tasks Assigned</div>
-                <div className="font-medium">24 tasks</div>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-xs text-gray-500 mb-1">Completed Tasks</div>
-                <div className="font-medium">19 tasks</div>
-              </div>
             </div>
           </div>
         </div>

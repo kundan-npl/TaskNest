@@ -42,6 +42,7 @@ const Login = () => {
       navigate('/dashboard'); // Redirect to dashboard
     } catch (error) {
       toast.error(error.message || 'Login failed. Please check your credentials or try again.');
+      // Stay on the login page, do not redirect
     } finally {
       setLoading(false);
     }
@@ -125,7 +126,7 @@ const Login = () => {
 
           <div className="text-sm">
             <Link
-              to="/forgot-password"
+              to="/auth/forgot-password"
               className="font-medium text-primary-600 hover:text-primary-500"
             >
               Forgot your password?
