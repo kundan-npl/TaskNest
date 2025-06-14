@@ -230,11 +230,12 @@ exports.updateTask = async (req, res, next) => {
     
     // Check if user has access to update the task
     const project = await Project.findById(projectId);
-    
-    const isTeamMember = project.team.some(memberId => 
-      memberId.toString() === req.user.id
-    );
-    
+
+    // FIX: Use project.members, not project.team
+    const isTeamMember = project.members && Array.isArray(project.members)
+      ? project.members.some(member => member.user.toString() === req.user.id)
+      : false;
+
     if (project.createdBy.toString() !== req.user.id && 
         task.createdBy.toString() !== req.user.id && 
         !isTeamMember) {

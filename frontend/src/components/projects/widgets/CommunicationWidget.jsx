@@ -139,7 +139,7 @@ const CommunicationWidget = ({
     try {
       setLoadingActivity(true);
       const response = await projectService.getProjectActivity(project._id);
-      setActivityFeed(response.data || activityFeed);
+      setActivityFeed(response.data?.data || []);
     } catch (error) {
       console.error('Failed to load activity:', error);
       // Keep fallback data already set in state

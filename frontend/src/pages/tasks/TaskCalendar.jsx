@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import taskService from '../../services/taskService';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
+import { formatLocalDateYYYYMMDD } from '../../utils/dateUtils.js';
 
 const TaskCalendar = () => {
   const { currentUser } = useAuth();
@@ -139,16 +140,14 @@ const TaskCalendar = () => {
   // Get tasks for a specific day
   const getTasksForDay = (day) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const dateString = date.toISOString().split('T')[0];
-    
+    const dateString = formatLocalDateYYYYMMDD(date);
     return tasks.filter(task => task.dueDate === dateString);
   };
   
   // Handle day click
   const handleDayClick = (day) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    // Redirect directly to create task page with date param
-    navigate(`/tasks/create?date=${date.toISOString().split('T')[0]}`);
+    navigate(`/tasks/create?date=${formatLocalDateYYYYMMDD(date)}`);
   };
   
   // Render calendar

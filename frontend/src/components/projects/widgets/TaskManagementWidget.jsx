@@ -87,7 +87,11 @@ const TaskManagementWidget = ({
     try {
       setLoading(true);
       const response = await projectService.getTasks(project._id || project.id);
-      setTasks(response.data || []);
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        setTasks(response.data);
+      } else if (Array.isArray(response.data) && response.data.length === 0) {
+        setTasks([]);
+      } // else, do not update tasks (prevents accidental clearing)
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
       toast.error('Failed to fetch tasks');
@@ -96,8 +100,16 @@ const TaskManagementWidget = ({
     }
   };
 
+  // Utility to normalize status to board columns
+  const normalizeStatus = (status) => {
+    if (["not-started", "todo"].includes(status)) return "not-started";
+    if (["in-progress", "in-review", "review", "on-hold"].includes(status)) return "in-progress";
+    if (["completed", "done"].includes(status)) return "completed";
+    return "not-started"; // fallback
+  };
+
   const filteredTasks = tasks.filter(task => {
-    if (filter.status && task.status !== filter.status) return false;
+    if (filter.status && normalizeStatus(task.status) !== filter.status) return false;
     if (filter.priority && task.priority !== filter.priority) return false;
     if (filter.assignee && task.assignedTo?.id !== filter.assignee) return false;
     if (filter.search && !task.title.toLowerCase().includes(filter.search.toLowerCase()) && 
@@ -106,9 +118,20 @@ const TaskManagementWidget = ({
   });
 
   const tasksByStatus = {
-    'not-started': filteredTasks.filter(t => t.status === 'not-started' || t.status === 'todo'),
-    'in-progress': filteredTasks.filter(t => ['in-progress', 'on-hold', 'in-review'].includes(t.status)),
-    'completed': filteredTasks.filter(t => t.status === 'completed' || t.status === 'done')
+    'not-started': filteredTasks.filter(t => normalizeStatus(t.status) === 'not-started'),
+    'in-progress': filteredTasks.filter(t => normalizeStatus(t.status) === 'in-progress'),
+    'completed': filteredTasks.filter(t => normalizeStatus(t.status) === 'completed')
+  };
+
+  // Map frontend status to backend status
+  const toBackendStatus = (status) => {
+    switch (status) {
+      case 'not-started': return 'todo';
+      case 'in-progress': return 'in-progress';
+      case 'completed': return 'done';
+      case 'on-hold': return 'review';
+      default: return status;
+    }
   };
 
   const handleTaskStatusChange = async (taskId, newStatus) => {
@@ -119,20 +142,22 @@ const TaskManagementWidget = ({
 
     try {
       setLoading(true);
-      const updatedTask = await projectService.updateTaskStatus(
-        project._id || project.id, 
-        taskId, 
-        newStatus
-      );
-      
-      setTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, status: newStatus } : t
-      ));
-      
+      const taskService = (await import('../../../services/taskService')).default;
+      const backendStatus = toBackendStatus(newStatus);
+      const updatedTask = await taskService.updateTask(project._id || project.id, taskId, { status: backendStatus });
+      updatedTask.status = normalizeStatus(updatedTask.status);
+      setTasks(prev => {
+        // If the updated task is not found in prev, add it; otherwise, update it in place
+        const found = prev.some(t => t._id === taskId);
+        if (found) {
+          return prev.map(t => t._id === taskId ? { ...t, ...updatedTask } : t);
+        } else {
+          return [updatedTask, ...prev];
+        }
+      });
       if (onTaskUpdate) {
         onTaskUpdate(updatedTask);
       }
-      
       toast.success('Task status updated successfully');
     } catch (error) {
       console.error('Failed to update task status:', error);
@@ -234,7 +259,10 @@ const TaskManagementWidget = ({
   const handleDrop = (e, newStatus) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain');
-    handleTaskStatusChange(taskId, newStatus);
+    // Map board column to canonical status
+    let statusToSet = newStatus;
+    // Use canonical board status, but send backend value
+    handleTaskStatusChange(taskId, statusToSet);
   };
 
   const getStatusColor = (status) => {
@@ -411,50 +439,49 @@ const TaskManagementWidget = ({
                   {status === 'not-started' ? 'Not Started' : status === 'in-progress' ? 'In Progress' : 'Completed'} ({tasksByStatus[status]?.length || 0})
                 </h3>
                 <div className="space-y-3 min-h-[200px]">
-                  {(tasksByStatus[status] || []).map(task => (
-                    <div
-                      key={task._id}
-                      draggable={permissions.canEdit}
-                      onDragStart={(e) => handleDragStart(e, task)}
-                      className="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-600 cursor-move hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedTasks.includes(task._id)}
-                            onChange={(e) => handleTaskSelection(task._id, e.target.checked)}
-                            className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <Link
-                            to={`/tasks/${task._id}`}
-                            className="font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 text-sm"
-                          >
-                            {task.title}
-                          </Link>
-                        </div>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
-                          {task.priority}
-                        </span>
-                      </div>
-                      
-                      {task.description && (
-                        <p className="text-gray-600 dark:text-gray-400 text-xs mb-2 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-                      
-                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>Due: {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}</span>
-                        {task.assignedTo && (
-                          <span className="bg-gray-100 dark:bg-gray-600 rounded-full px-2 py-1">
-                            {task.assignedTo.name}
-                          </span>
+                  {(tasksByStatus[status] || []).map(task => {
+                    // Calculate days left
+                    let daysLeft = null;
+                    if (task.dueDate) {
+                      const due = new Date(task.dueDate);
+                      const today = new Date();
+                      // Zero out time for accurate day diff
+                      due.setHours(0,0,0,0);
+                      today.setHours(0,0,0,0);
+                      daysLeft = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+                    }
+                    return (
+                      <div
+                        key={task._id}
+                        draggable={permissions.canEdit}
+                        onDragStart={(e) => handleDragStart(e, task)}
+                        className="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-600 cursor-move hover:shadow-md transition-shadow flex items-center justify-between"
+                      >
+                        <Link
+                          to={`/tasks/${task._id}`}
+                          className="flex-1 font-medium text-gray-900 dark:text-white text-sm truncate hover:underline"
+                          style={{ minWidth: 0 }}
+                          onClick={e => e.stopPropagation()}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`View details for ${task.title}`}
+                        >
+                          {task.title}
+                        </Link>
+                        {typeof daysLeft === 'number' && (
+                          <div className={`ml-2 px-3 py-1 rounded-full text-xs font-semibold flex items-center ${
+                            daysLeft < 0
+                              ? 'bg-red-100 text-red-700 border border-red-200'
+                              : daysLeft <= 3
+                                ? 'bg-red-50 text-red-600 border border-red-200'
+                                : 'bg-gray-100 text-gray-700 border border-gray-200'
+                          }`}>
+                            {daysLeft < 0 ? `${Math.abs(daysLeft)}D overdue` : `${daysLeft}D`}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

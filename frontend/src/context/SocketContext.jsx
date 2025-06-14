@@ -45,7 +45,7 @@ export const SocketProvider = ({ children }) => {
       disconnectSocket();
     }
 
-    const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5500', {
+    const newSocket = io(import.meta.env.VITE_API_URL, {
       auth: {
         token: token
       },

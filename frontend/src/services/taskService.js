@@ -44,10 +44,10 @@ const taskService = {
     }
   },
 
-  // Update a task
-  updateTask: async (id, taskData) => {
+  // Update a task (requires projectId and id)
+  updateTask: async (projectId, id, taskData) => {
     try {
-      const response = await api.put(`/tasks/${id}`, taskData);
+      const response = await api.put(`/projects/${projectId}/tasks/${id}`, taskData);
       return response.data.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to update task');
