@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api/v1';
+const API_URL = import.meta.env.VITE_API_URL;
 
 // Create axios instance with default config
 const api = axios.create({
@@ -29,9 +29,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear token on unauthorized response
+      // Only clear token, do not redirect globally
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // window.location.href = '/login'; // REMOVE THIS LINE
     }
     return Promise.reject(error);
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { SocketProvider } from './context/SocketContext.jsx';
 
@@ -16,6 +16,7 @@ import Register from './pages/auth/Register.jsx';
 import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 import ResetPassword from './pages/auth/ResetPassword.jsx';
 import AcceptInvitation from './pages/auth/AcceptInvitation.jsx';
+import EmailSent from './pages/auth/EmailSent.jsx';
 
 // Protected route component
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
@@ -30,6 +31,7 @@ const CreateProject = lazy(() => import('./pages/projects/CreateProject.jsx'));
 const EditProject = lazy(() => import('./pages/projects/EditProject.jsx'));
 const TaskDetails = lazy(() => import('./pages/tasks/TaskDetails.jsx'));
 const CreateTask = lazy(() => import('./pages/tasks/CreateTask.jsx'));
+const EditTask = lazy(() => import('./pages/tasks/EditTask.jsx'));
 const TaskCalendar = lazy(() => import('./pages/tasks/TaskCalendar.jsx'));
 const MyTasks = lazy(() => import('./pages/tasks/MyTasks.jsx'));
 const UserProfile = lazy(() => import('./pages/profile/UserProfile.jsx'));
@@ -61,6 +63,15 @@ function App() {
     );
   }
 
+  // Add this helper component inside App
+  function ResetPasswordWithQuery() {
+    const location = useLocation();
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    // Render ResetPassword with the token as a prop
+    return <ResetPassword resettoken={token} />;
+  }
+
   return (
     <AuthProvider>
       <SocketProvider>
@@ -74,7 +85,9 @@ function App() {
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/register" element={<Register />} />
             <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+            <Route path="/auth/email-sent" element={<EmailSent />} />
             <Route path="/auth/reset-password/:resettoken" element={<ResetPassword />} />
+            <Route path="/reset-password" element={<ResetPasswordWithQuery />} />
           </Route>
 
           {/* Public invitation acceptance route */}
@@ -107,6 +120,7 @@ function App() {
           {/* Tasks */}
           <Route path="/tasks" element={<MyTasks />} />
           <Route path="/tasks/:id" element={<TaskDetails />} />
+          <Route path="/tasks/:id/edit" element={<EditTask />} />
           <Route path="/tasks/create" element={<CreateTask />} />
           <Route path="/projects/:projectId/tasks/create" element={<CreateTask />} />
           <Route path="/tasks/calendar" element={<TaskCalendar />} />

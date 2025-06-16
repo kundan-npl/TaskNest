@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
 const cors = require('cors');
@@ -22,6 +23,8 @@ connectDB();
 
 // Initialize app
 const app = express();
+
+// HTTP server setup
 const server = http.createServer(app);
 
 // Body parser
@@ -63,10 +66,26 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting (per user account if authenticated, else per IP)
+const isProduction = process.env.NODE_ENV === 'production';
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: isProduction ? 500 : 2000, // 500 per 10 min in prod, 2000 in dev
+  keyGenerator: (req) => {
+    // Use user ID if authenticated, else fallback to IP
+    if (req.user && req.user.id) {
+      return `user:${req.user.id}`;
+    }
+    return `ip:${req.ip}`;
+  },
+  handler: (req, res, next) => {
+    const key = req.user && req.user.id ? `user:${req.user.id}` : `ip:${req.ip}`;
+    console.warn(`Rate limit exceeded for ${key} on ${req.originalUrl}`);
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many requests, please try again later.'
+    });
+  }
 });
 
 app.use(limiter);
@@ -86,7 +105,7 @@ const fileRoutes = require('./src/routes/file.routes');
 const notificationRoutes = require('./src/routes/notification.routes');
 const discussionRoutes = require('./src/routes/discussion.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
-const mockS3Routes = require('./src/routes/mock-s3.routes');
+const googleDriveRoutes = require('./src/routes/googleDrive.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -97,11 +116,7 @@ app.use(`${API_PREFIX}/files`, fileRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/discussions`, discussionRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
-
-// Mount mock S3 routes for development
-if (process.env.NODE_ENV === 'development' || !process.env.AWS_ACCESS_KEY_ID) {
-  app.use(`${API_PREFIX}/files/mock`, mockS3Routes);
-}
+app.use(`${API_PREFIX}`, googleDriveRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
@@ -139,9 +154,8 @@ const emailService = require('./src/services/email.service');
 const startServer = async () => {
   // Initialize email service
   await emailService.initialize();
-  
   server.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`HTTP server running on http://localhost:${PORT}`);
     console.log('Socket.IO server initialized');
   });
 };

@@ -7,13 +7,13 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import FileUploader from '../../components/common/FileUploader';
 
 const TaskDetails = () => {
-  const { id } = useParams();
+  const { id: idFromParams } = useParams(); // Renamed for clarity
   const navigate = useNavigate();
   const { currentUser, hasRole } = useAuth();
   
   const [task, setTask] = useState(null);
   const [comments, setComments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Initial loading true
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -23,123 +23,149 @@ const TaskDetails = () => {
   const [showFileUploader, setShowFileUploader] = useState(false);
 
   useEffect(() => {
-    fetchTaskData();
-  }, [id]);
+    const rawId = idFromParams;
+    // Log raw idFromParams immediately
+    console.log(`[TaskDetails] useEffect[idFromParams] - START. Raw idFromParams: "${rawId}", type: ${typeof rawId}`);
+
+    // Trim rawId if it's a string, otherwise use as is
+    const currentId = (typeof rawId === 'string') ? rawId.trim() : rawId;
+    console.log(`[TaskDetails] useEffect[idFromParams] - Processed currentId: "${currentId}", type: ${typeof currentId}`);
+
+    // Validate the processed currentId
+    const isValidId = currentId && typeof currentId === 'string' && currentId !== "undefined" && currentId !== "";
+
+    if (isValidId) {
+      console.log(`[TaskDetails] useEffect[idFromParams] - ID is VALID: "${currentId}". Calling fetchTaskData.`);
+      fetchTaskData(currentId);
+    } else {
+      console.warn(`[TaskDetails] useEffect[idFromParams] - ID is INVALID. currentId: "${currentId}" (type: ${typeof currentId}), rawId: "${rawId}". Redirecting to /projects.`);
+      setLoading(false); // Stop loading before redirect
+      if (navigate && typeof navigate === 'function') {
+          navigate('/projects');
+      } else {
+          console.error("[TaskDetails] navigate function is not available for redirection!");
+      }
+    }
+  }, [idFromParams, navigate]);
 
   useEffect(() => {
-    if (task) {
-      fetchTaskFiles();
-    }
-  }, [task]);
+    const rawId = idFromParams;
+    const currentId = (typeof rawId === 'string') ? rawId.trim() : rawId;
+    
+    // Ensure task is loaded AND currentId (processed route param) is valid and available
+    const isValidIdForFiles = task && currentId && typeof currentId === 'string' && currentId !== "undefined" && currentId !== "";
 
-  const fetchTaskData = async () => {
+    if (isValidIdForFiles) {
+      console.debug(`[TaskDetails] useEffect[task,idFromParams]: Task and valid ID "${currentId}". Fetching files.`);
+      fetchTaskFiles(currentId);
+    } else if (task) {
+      console.warn(`[TaskDetails] useEffect[task,idFromParams]: Task exists, but ID for files is invalid. currentId: "${currentId}" (type: ${typeof currentId}), rawId: "${rawId}".`);
+    }
+  }, [task, idFromParams]); // idFromParams is the dependency
+
+  // Fetch comments when task is loaded
+  useEffect(() => {
+    const rawId = idFromParams;
+    const currentId = (typeof rawId === 'string') ? rawId.trim() : rawId;
+    const isValidId = currentId && typeof currentId === 'string' && currentId !== "undefined" && currentId !== "";
+    if (isValidId) {
+      fetchComments(currentId);
+    }
+  }, [task, idFromParams]);
+
+  const fetchTaskData = async (taskIdArg) => {
+    console.log(`[TaskDetails] fetchTaskData - START. Received taskIdArg: "${taskIdArg}", type: ${typeof taskIdArg}`);
+    const currentTaskId = (typeof taskIdArg === 'string') ? taskIdArg.trim() : taskIdArg;
+    console.log(`[TaskDetails] fetchTaskData - Processed currentTaskId: "${currentTaskId}", type: ${typeof currentTaskId}`);
+
+    const isValidTaskId = currentTaskId && typeof currentTaskId === 'string' && currentTaskId !== "undefined" && currentTaskId !== "";
+
+    if (!isValidTaskId) {
+      console.warn(`[TaskDetails] fetchTaskData - Invalid currentTaskId: "${currentTaskId}" (type: ${typeof currentTaskId}), raw taskIdArg: "${taskIdArg}". Aborting data fetch.`);
+      setLoading(false); // Ensure loading is stopped
+      // Do not navigate from here; the main useEffect handles redirection based on idFromParams
+      return;
+    }
+
+    console.log(`[TaskDetails] fetchTaskData - Task ID "${currentTaskId}" is VALID. Proceeding to fetch.`);
     try {
       setLoading(true);
-      
-      // For now, let's use mock data
-      const mockTask = {
-        id,
-        title: 'Implement Task Management Components',
-        description: 'Build drag and drop task board, task details modal, and task creation form with validation for the TaskNest application. Include status updates, priority selection, and assignee functionality.',
-        status: 'in-progress',
-        priority: 'high',
-        createdAt: '2025-04-18',
-        dueDate: '2025-05-20',
-        projectId: '1',
-        projectName: 'TaskNest Frontend Development',
-        assignedTo: { 
-          id: '2', 
-          name: 'Jane Smith', 
-          email: 'jane@example.com',
-          avatar: 'https://i.pravatar.cc/150?img=2' 
-        },
-        createdBy: { 
-          id: '3', 
-          name: 'Shobha Sharma', 
-          email: 'sarah@example.com',
-          avatar: 'https://i.pravatar.cc/150?img=3' 
-        },
-        subtasks: [
-          { id: '1', title: 'Design task card component', completed: true },
-          { id: '2', title: 'Implement drag and drop functionality', completed: true },
-          { id: '3', title: 'Create task detail modal', completed: false },
-          { id: '4', title: 'Build task form with validation', completed: false },
-        ],
-        attachments: [
-          { 
-            id: '1', 
-            name: 'task-wireframe.png', 
-            type: 'image/png', 
-            size: '256 KB',
-            url: 'https://via.placeholder.com/300x200?text=Task+Wireframe'
-          },
-          {
-            id: '2',
-            name: 'requirements.pdf',
-            type: 'application/pdf',
-            size: '512 KB',
-            url: '#'
-          }
-        ]
-      };
+      // console.debug('[TaskDetails] Fetching task data for id (arg):', currentTaskId); // Covered by new log
 
-      const mockComments = [
-        {
-          id: '1',
-          content: 'I\'ve started working on the task card component and hope to have it done by tomorrow.',
-          createdAt: '2025-04-19T10:30:00Z',
-          user: { 
-            id: '2', 
-            name: 'Jane Smith', 
-            avatar: 'https://i.pravatar.cc/150?img=2' 
-          }
-        },
-        {
-          id: '2',
-          content: 'Great! Let me know if you need any help with the drag and drop functionality.',
-          createdAt: '2025-04-19T11:15:00Z',
-          user: { 
-            id: '3', 
-            name: 'Shobha Sharma', 
-            avatar: 'https://i.pravatar.cc/150?img=3' 
-          }
-        },
-        {
-          id: '3',
-          content: 'I\'ve completed the task card component and drag and drop functionality. Moving on to the task detail modal now.',
-          createdAt: '2025-04-21T09:45:00Z',
-          user: { 
-            id: '2', 
-            name: 'Jane Smith', 
-            avatar: 'https://i.pravatar.cc/150?img=2' 
-          }
-        }
-      ];
-      
-      // In a real implementation, we would fetch data from the API
-      // const task = await taskService.getTaskById(id);
-      // const comments = await taskService.getTaskComments(id);
-      
-      setTask(mockTask);
-      setComments(mockComments);
+      // Use getTaskByIdSimple since we only have the task ID
+      const taskData = await taskService.getTaskByIdSimple(currentTaskId);
+      setTask(taskData);
+      // Optionally clear comments if you want to hide the section
+      setComments([]);
     } catch (error) {
+      console.error('[TaskDetails] Error fetching task data:', error);
       toast.error(error.message || 'Failed to load task data');
-      navigate('/projects');
+      // Navigate only if the error is critical and related to the main data fetch
+      // Check if idFromParams is still the problematic one to avoid loop if error is different
+      if (taskIdArg === idFromParams) {
+        if (navigate && typeof navigate === 'function') {
+            navigate('/projects');
+        } else {
+            console.error("[TaskDetails] navigate function is not available for redirection in error handler!");
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTaskFiles = async () => {
+  const fetchTaskFiles = async (taskIdArg) => {
+    console.log(`[TaskDetails] fetchTaskFiles - START. Received taskIdArg: "${taskIdArg}", type: ${typeof taskIdArg}`);
+    const currentTaskId = (typeof taskIdArg === 'string') ? taskIdArg.trim() : taskIdArg;
+    console.log(`[TaskDetails] fetchTaskFiles - Processed currentTaskId: "${currentTaskId}", type: ${typeof currentTaskId}`);
+
+    const isValidTaskId = currentTaskId && typeof currentTaskId === 'string' && currentTaskId !== "undefined" && currentTaskId !== "";
+
+    if (!isValidTaskId) {
+      console.warn(`[TaskDetails] fetchTaskFiles - Invalid currentTaskId: "${currentTaskId}" (type: ${typeof currentTaskId}), raw taskIdArg: "${taskIdArg}". Aborting file fetch.`);
+      setLoadingFiles(false); // Ensure loading is stopped
+      return;
+    }
+    
+    console.log(`[TaskDetails] fetchTaskFiles - Task ID "${currentTaskId}" is VALID. Proceeding to fetch files.`);
     try {
       setLoadingFiles(true);
-      const files = await fileService.listFiles({ taskId: id });
+      // console.debug('[TaskDetails] Fetching task files for taskId:', currentTaskId); // Covered by new log
+      const files = await fileService.listFiles({ taskId: currentTaskId });
       setTaskFiles(files);
-      setLoadingFiles(false);
     } catch (error) {
       console.error('Error fetching task files:', error);
       toast.error('Failed to load task files');
+    } finally {
       setLoadingFiles(false);
+    }
+  };
+
+  const fetchComments = async (taskIdArg) => {
+    try {
+      const currentTaskId = (typeof taskIdArg === 'string') ? taskIdArg.trim() : taskIdArg;
+      const commentsData = await taskService.getTaskComments(currentTaskId);
+      setComments(
+        (commentsData || []).map(comment => ({
+          id: comment._id,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          user: comment.author
+            ? {
+                id: comment.author._id,
+                name: comment.author.name,
+                avatar: comment.author.avatar || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`
+              }
+            : {
+                id: '',
+                name: 'Unknown',
+                avatar: `https://i.pravatar.cc/150?img=1`
+              }
+        }))
+      );
+    } catch (error) {
+      setComments([]);
+      toast.error(error.message || 'Failed to load comments');
     }
   };
 
@@ -172,33 +198,13 @@ const TaskDetails = () => {
 
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!newComment.trim()) {
-      return;
-    }
-    
+    if (!newComment.trim()) return;
     try {
       setSubmittingComment(true);
-      
-      // In a real implementation, we would call the API
-      // await taskService.addTaskComment(id, newComment);
-      
-      // Simulate API response
-      const newCommentObj = {
-        id: `temp-${Date.now()}`,
-        content: newComment,
-        createdAt: new Date().toISOString(),
-        user: {
-          id: currentUser.id,
-          name: currentUser.name,
-          avatar: currentUser.avatar || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`
-        }
-      };
-      
-      // Update local state
-      setComments([...comments, newCommentObj]);
+      await taskService.addTaskComment(idFromParams, newComment);
       setNewComment('');
       toast.success('Comment added successfully');
+      fetchComments(idFromParams);
     } catch (error) {
       toast.error(error.message || 'Failed to add comment');
     } finally {
@@ -250,6 +256,11 @@ const TaskDetails = () => {
   };
 
   const handleFileDownload = async (fileKey) => {
+    if (!fileKey || fileKey === 'undefined') {
+      console.error('[handleFileDownload] Invalid fileKey:', fileKey);
+      toast.error('Invalid file key for download');
+      return;
+    }
     try {
       const downloadUrl = await fileService.getDownloadUrl(fileKey);
       window.open(downloadUrl, '_blank');
@@ -260,11 +271,16 @@ const TaskDetails = () => {
   };
 
   const handleFileDelete = async (fileKey) => {
+    if (!fileKey || fileKey === 'undefined') {
+      console.error('[handleFileDelete] Invalid fileKey:', fileKey);
+      toast.error('Invalid file key for delete');
+      return;
+    }
     if (window.confirm('Are you sure you want to delete this file?')) {
       try {
         await fileService.deleteFile(fileKey);
-        // Refresh the file list after deletion
-        fetchTaskFiles();
+        // Always pass the correct task ID
+        fetchTaskFiles(idFromParams);
         toast.success('File deleted successfully');
       } catch (error) {
         console.error('Error deleting file:', error);
@@ -315,6 +331,9 @@ const TaskDetails = () => {
   const totalSubtasks = task.subtasks.length;
   const subtasksProgress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
 
+  // Helper to get a valid file key/id
+  const getFileKey = (file) => file.key || file.id || file._id || null;
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="mb-6">
@@ -331,7 +350,7 @@ const TaskDetails = () => {
           {hasRole(['admin', 'user']) && (
             <div className="flex gap-2">
               <Link
-                to={`/tasks/${id}/edit`}
+                to={`/tasks/${idFromParams}/edit`}
                 className="btn-secondary"
               >
                 Edit Task
@@ -593,6 +612,11 @@ const TaskDetails = () => {
                     <FileUploader 
                       onUpload={handleFileUpload}
                       onClose={() => setShowFileUploader(false)}
+                      multiple={true}
+                      maxSize={50}
+                      allowedTypes="pdf,doc,docx,xls,xlsx,ppt,pptx,txt,jpg,jpeg,png,gif"
+                      taskId={idFromParams}
+                      projectId={task.projectId}
                     />
                   </div>
                 )}
@@ -846,7 +870,7 @@ const TaskDetails = () => {
                   multiple={true} 
                   maxSize={50}
                   allowedTypes="pdf,doc,docx,xls,xlsx,ppt,pptx,txt,jpg,jpeg,png,gif"
-                  taskId={id}
+                  taskId={idFromParams}
                   projectId={task.projectId}
                 />
               </div>
@@ -858,77 +882,100 @@ const TaskDetails = () => {
               </div>
             ) : taskFiles.length > 0 ? (
               <div className="space-y-2 max-h-72 overflow-y-auto">
-                {taskFiles.map((file) => (
-                  <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-10 h-10 flex items-center justify-center rounded bg-gray-100 ${
-                        file.contentType?.includes('image') ? 'bg-blue-50' :
-                        file.contentType?.includes('pdf') ? 'bg-red-50' :
-                        file.contentType?.includes('document') || file.contentType?.includes('msword') ? 'bg-blue-50' :
-                        file.contentType?.includes('sheet') || file.contentType?.includes('excel') ? 'bg-green-50' :
-                        'bg-gray-50'
-                      }`}>
-                        {file.contentType?.includes('image') ? (
-                          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                          </svg>
-                        ) : file.contentType?.includes('pdf') ? (
-                          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                          </svg>
-                        ) : (
-                          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                          </svg>
-                        )}
+                {taskFiles.map((file) => {
+                  const fileKey = getFileKey(file);
+                  console.log('[File Render] file:', file, 'fileKey:', fileKey);
+                  if (!fileKey) return null;
+                  return (
+                    <div key={file.id || file._id || file.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-10 h-10 flex items-center justify-center rounded bg-gray-100 ${
+                          file.contentType?.includes('image') ? 'bg-blue-50' :
+                          file.contentType?.includes('pdf') ? 'bg-red-50' :
+                          file.contentType?.includes('document') || file.contentType?.includes('msword') ? 'bg-blue-50' :
+                          file.contentType?.includes('sheet') || file.contentType?.includes('excel') ? 'bg-green-50' :
+                          'bg-gray-50'
+                        }`}>
+                          {file.contentType?.includes('image') ? (
+                            <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                          ) : file.contentType?.includes('pdf') ? (
+                            <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm truncate max-w-[200px]">{file.filename}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(file.createdAt).toLocaleDateString()} • {file.size ? `${(file.size / 1024).toFixed(2)} KB` : 'Unknown size'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm truncate max-w-[200px]">{file.filename}</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(file.createdAt).toLocaleDateString()} • {file.size ? `${(file.size / 1024).toFixed(2)} KB` : 'Unknown size'}
-                        </p>
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={() => handleFileDownload(fileKey)}
+                          className="p-1 text-gray-600 hover:text-primary-600"
+                          title="Download"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleFileDelete(fileKey)}
+                          className="p-1 text-gray-600 hover:text-red-600"
+                          title="Delete"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                          </svg>
+                        </button>
                       </div>
                     </div>
-                    
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={() => handleFileDownload(file.key)}
-                        className="p-1 text-gray-600 hover:text-primary-600"
-                        title="Download"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleFileDelete(file.key)}
-                        className="p-1 text-gray-600 hover:text-red-600"
-                        title="Delete"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <div className="text-center py-8">
+              <div className="flex flex-col items-center justify-center py-8">
                 <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
-                <p className="mt-2 text-sm text-gray-500">No files attached to this task</p>
-                {!showFileUploader && (
-                  <button 
-                    onClick={() => setShowFileUploader(true)}
-                    className="mt-2 text-primary-600 hover:text-primary-800 text-sm font-medium"
-                  >
-                    Upload a file
-                  </button>
-                )}
+                <p className="mt-2 text-sm text-gray-500">File sharing is coming soon!</p>
+                <p className="text-xs text-gray-400">This feature is under development.</p>
               </div>
             )}
+          </div>
+        </div>
+        
+        <div className="md:col-span-1">
+          {/* Activity log or related information */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h3 className="font-medium text-gray-800 mb-4">Activity Log</h3>
+            
+            <div className="space-y-4">
+              {/* Example log item */}
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <div className="h-8 w-8 bg-gray-100 rounded-full border-4 border-white flex items-center justify-center">
+                    <svg className="h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-gray-900">Task status updated</p>
+                  <p className="text-xs text-gray-500">Just now</p>
+                </div>
+              </div>
+              
+              {/* More log items... */}
+            </div>
           </div>
         </div>
       </div>
