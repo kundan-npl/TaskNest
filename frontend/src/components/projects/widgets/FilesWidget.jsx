@@ -22,6 +22,19 @@ const FilesWidget = ({
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
 
+  // Google Drive integration (backend-driven)
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
+  const [googleDriveFiles, setGoogleDriveFiles] = useState([]);
+  const [googleDriveLoading, setGoogleDriveLoading] = useState(false);
+
+  // Robust project creator check
+  const currentUserId = window?.currentUser?._id;
+  const projectCreatorId =
+    typeof project?.createdBy === 'object'
+      ? project?.createdBy?._id
+      : project?.createdBy;
+  const isProjectCreator = currentUserId && projectCreatorId && currentUserId.toString() === projectCreatorId.toString();
+
   // Update local state when prop changes
   useEffect(() => {
     // Only update if propFiles is different (by length or ids)
@@ -41,7 +54,51 @@ const FilesWidget = ({
     }
   }, [project?._id, project?.id]);
 
-  // Fetch files from API
+  // Helper to get JWT token from localStorage (if present)
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
+  // Check if Google Drive is connected (via backend)
+  useEffect(() => {
+    const checkDriveStatus = async () => {
+      if (!project?._id && !project?.id) return;
+      try {
+        const res = await fetch(`/api/v1/projects/${project._id || project.id}/drive/status`, {
+          credentials: 'include',
+          headers: { ...getAuthHeaders() }
+        });
+        const data = await res.json();
+        setGoogleDriveConnected(!!data.connected);
+      } catch (err) {
+        setGoogleDriveConnected(false);
+      }
+    };
+    checkDriveStatus();
+  }, [project?._id, project?.id]);
+
+  // Fetch Google Drive files if connected
+  useEffect(() => {
+    const fetchDriveFiles = async () => {
+      if (!googleDriveConnected || !project?._id && !project?.id) return;
+      setGoogleDriveLoading(true);
+      try {
+        const res = await fetch(`/api/v1/projects/${project._id || project.id}/drive/files`, {
+          credentials: 'include',
+          headers: { ...getAuthHeaders() }
+        });
+        const data = await res.json();
+        setGoogleDriveFiles(data.files || []);
+      } catch (err) {
+        toast.error('Failed to fetch Google Drive files');
+      } finally {
+        setGoogleDriveLoading(false);
+      }
+    };
+    fetchDriveFiles();
+  }, [googleDriveConnected, project?._id, project?.id]);
+
   const fetchFiles = async () => {
     if (!project?._id && !project?.id) return;
     
@@ -372,6 +429,47 @@ const FilesWidget = ({
     }
   });
 
+  const handleConnectGoogleDrive = async () => {
+    if (!project?._id && !project?.id) return;
+    try {
+      const res = await fetch(`/api/v1/projects/${project._id || project.id}/drive/auth-url`, {
+        credentials: 'include',
+        headers: { ...getAuthHeaders() }
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error('Failed to get Google Drive auth URL');
+      }
+    } catch (err) {
+      toast.error('Failed to connect Google Drive');
+    }
+  };
+
+  // Listen for OAuth callback (redirect with ?driveLinked=1)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('driveLinked') === '1') {
+      setGoogleDriveConnected(true);
+      // Optionally, remove the param from URL
+      params.delete('driveLinked');
+      window.history.replaceState({}, document.title, window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+    }
+  }, []);
+
+  // In the return JSX, replace the main content with this logic:
+  if (!googleDriveConnected) {
+    return (
+      <div className={`widget-card flex flex-col items-center justify-center min-h-[300px] ${className}`}>
+        <svg className="h-16 w-16 text-blue-500 mb-4" viewBox="0 0 48 48"><path fill="#2196F3" d="M25.5 6.938l-3.5 6.062 10.5 18.188 3.5-6.062z"/><path fill="#4CAF50" d="M12.5 41.062h23l-3.5-6.062h-16z"/><path fill="#FFC107" d="M12.5 41.062l10.5-18.188-3.5-6.062-10.5 18.188z"/><path fill="#F44336" d="M35.5 41.062l-10.5-18.188 3.5-6.062 10.5 18.188z"/></svg>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">Link Google Drive</h3>
+        <p className="text-gray-600 mb-6 text-center max-w-xs">To enable file sharing for this project, the project creator must link a Google Drive account. Once linked, all members will have seamless access to shared files here.</p>
+        <button onClick={handleConnectGoogleDrive} className="px-6 py-3 bg-blue-600 text-white rounded-lg text-lg font-medium shadow hover:bg-blue-700 transition">Link Google Drive</button>
+      </div>
+    );
+  }
+
   return (
     <div className={`widget-card ${className}`}>
       {/* Header */}
@@ -518,6 +616,36 @@ const FilesWidget = ({
           />
         </div>
       )}
+
+      {/* Google Drive Integration */}
+      {googleDriveConnected ? (
+        <div className="mb-4">
+          <div className="flex items-center gap-2">
+            <svg className="h-6 w-6 text-green-500" viewBox="0 0 48 48"><path fill="#2196F3" d="M25.5 6.938l-3.5 6.062 10.5 18.188 3.5-6.062z"/><path fill="#4CAF50" d="M12.5 41.062h23l-3.5-6.062h-16z"/><path fill="#FFC107" d="M12.5 41.062l10.5-18.188-3.5-6.062-10.5 18.188z"/><path fill="#F44336" d="M35.5 41.062l-10.5-18.188 3.5-6.062 10.5 18.188z"/></svg>
+            <span className="text-green-700 font-medium">Google Drive Connected</span>
+            {isProjectCreator && (
+              <button onClick={() => { localStorage.removeItem(`gdrive_token_${project?._id || project?.id}`); setGoogleDriveConnected(false); }} className="ml-2 text-xs text-red-600 underline">Disconnect</button>
+            )}
+          </div>
+          {googleDriveLoading ? (
+            <div className="mt-2 text-sm text-gray-500">Loading Google Drive files...</div>
+          ) : (
+            <div className="mt-4 max-h-80 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {googleDriveFiles.length === 0 ? (
+                <div className="col-span-full text-center text-gray-500">No files found in Google Drive</div>
+              ) : googleDriveFiles.map(file => (
+                <a key={file.id} href={file.webViewLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 bg-white rounded shadow hover:bg-gray-50">
+                  <img src={file.iconLink} alt="icon" className="h-8 w-8" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{file.name}</div>
+                    <div className="text-xs text-gray-500">{file.mimeType}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* Files List/Grid */}
       <div className={`max-h-96 overflow-y-auto ${viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'space-y-3'}`}>

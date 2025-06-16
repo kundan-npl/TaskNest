@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
 const cors = require('cors');
@@ -22,6 +23,8 @@ connectDB();
 
 // Initialize app
 const app = express();
+
+// HTTP server setup
 const server = http.createServer(app);
 
 // Body parser
@@ -102,6 +105,7 @@ const fileRoutes = require('./src/routes/file.routes');
 const notificationRoutes = require('./src/routes/notification.routes');
 const discussionRoutes = require('./src/routes/discussion.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
+const googleDriveRoutes = require('./src/routes/googleDrive.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -112,6 +116,7 @@ app.use(`${API_PREFIX}/files`, fileRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/discussions`, discussionRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
+app.use(`${API_PREFIX}`, googleDriveRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
@@ -149,9 +154,8 @@ const emailService = require('./src/services/email.service');
 const startServer = async () => {
   // Initialize email service
   await emailService.initialize();
-  
   server.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`HTTP server running on http://localhost:${PORT}`);
     console.log('Socket.IO server initialized');
   });
 };
