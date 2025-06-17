@@ -50,12 +50,20 @@ app.use(mongoSanitize());
 // Prevent parameter pollution
 app.use(hpp());
 
-// Enable CORS with specific configuration for debugging
+// Enable CORS with centralized configuration from .env
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map(url => url.trim())
+  : ["http://localhost:3000"];
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow any origin during development
-    console.log('Request from origin:', origin);
-    callback(null, true);
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
   },
   credentials: true
 }));
