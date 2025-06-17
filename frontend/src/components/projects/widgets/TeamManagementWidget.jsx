@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import projectService from '../../../services/projectService';
 import { useSocket } from '../../../context/SocketContext';
+import InviteByEmail from '../InviteByEmail';
 
 const TeamManagementWidget = ({ 
   members = [], 
@@ -30,6 +31,7 @@ const TeamManagementWidget = ({
   const [teamMembers, setTeamMembers] = useState(members);
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
+  const [inviteEmails, setInviteEmails] = useState([]);
 
   const { socket, isConnected, onlineUsers } = useSocket();
 
@@ -653,59 +655,49 @@ const TeamManagementWidget = ({
 
       {/* Invite Member Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Invite Team Member</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Enter email address"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Role
-                  </label>
-                  <select
-                    value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  >
-                    <option value="team-member">Team Member</option>
-                    <option value="team-lead">Team Lead</option>
-                    {permissions?.canManage && <option value="supervisor">Supervisor</option>}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Choose the appropriate role based on their responsibilities
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  onClick={() => setShowInviteModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleInviteMember}
-                  disabled={loading || !inviteEmail.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-                >
-                  {loading ? 'Sending...' : 'Send Invite'}
-                </button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"
+              onClick={() => setShowInviteModal(false)}
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h3 className="text-lg font-semibold mb-4">Invite by Email</h3>
+            <InviteByEmail inviteEmails={inviteEmails} setInviteEmails={setInviteEmails} availableUsers={teamMembers.map(m => m.user)} />
+            <div className="mt-4 flex justify-end space-x-2">
+              <button
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                onClick={() => setShowInviteModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                disabled={loading || inviteEmails.length === 0}
+                onClick={async () => {
+                  setLoading(true);
+                  for (const invite of inviteEmails) {
+                    try {
+                      await projectService.inviteMember(project._id, {
+                        email: invite.email,
+                        role: invite.role
+                      });
+                      toast.success(`Invitation sent to ${invite.email}`);
+                    } catch (err) {
+                      toast.error(`Failed to invite ${invite.email}: ${err.message}`);
+                    }
+                  }
+                  setInviteEmails([]);
+                  setShowInviteModal(false);
+                  setLoading(false);
+                  loadPendingInvitations();
+                }}
+              >
+                Send Invites
+              </button>
             </div>
           </div>
         </div>

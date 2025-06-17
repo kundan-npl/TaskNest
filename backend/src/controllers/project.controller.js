@@ -517,160 +517,80 @@ exports.updateProjectStatus = async (req, res, next) => {
 exports.inviteMember = async (req, res, next) => {
   try {
     const project = await Project.findById(req.params.id);
-
     if (!project) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found'
-      });
+      return res.status(404).json({ success: false, error: 'Project not found' });
     }
-
     const userMember = getUserProjectRole(project, req.user.id);
     if (!userMember || !userMember.permissions.canManageMembers) {
-      return res.status(403).json({
-        success: false,
-        error: 'Not authorized to invite members'
+      return res.status(403).json({ success: false, error: 'Not authorized to invite members' });
+    }
+    let { email, role = 'teamMember' } = req.body;
+    email = email.toLowerCase();
+    // --- Normalize role to backend format ---
+    if (role === 'teamMember' || role === 'team-member') role = 'team-member';
+    if (role === 'teamLead' || role === 'team-lead') role = 'team-lead';
+    if (role === 'supervisor') role = 'supervisor';
+    // --- Prevent duplicate invitations ---
+    project.pendingInvitations = project.pendingInvitations.filter(invite => invite.email !== email);
+    // --- Generate invite token ---
+    const crypto = require('crypto');
+    const inviteToken = crypto.randomBytes(20).toString('hex');
+    // --- Add new invitation ---
+    project.pendingInvitations.push({
+      email,
+      role,
+      token: inviteToken,
+      invitedBy: req.user.id,
+      invitedAt: new Date(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      status: 'pending'
+    });
+    await project.save();
+    // --- Compose invitation link ---
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const inviteLink = `${frontendUrl}/accept-invitation/${inviteToken}?project=${project._id}`;
+    // --- Compose email content ---
+    const emailService = require('../services/email.service');
+    let emailResult = { success: false, error: 'Email service not configured' };
+    if (emailService.isAvailable()) {
+      emailResult = await emailService.sendProjectInvitation({
+        email,
+        projectName: project.title,
+        inviterName: req.user.name,
+        inviteToken,
+        projectId: project._id,
+        role,
+        inviteLink
       });
     }
-
-    const { email, role = 'teamMember' } = req.body;
-
-    // Find user by email
-    const User = require('../models/user.model');
-    const userToInvite = await User.findOne({ email: email.toLowerCase() });
-
-    if (userToInvite) {
-      // User exists in system - add them directly
-      const existingMember = project.members.find(m => 
-        (m.user._id || m.user).toString() === userToInvite._id.toString()
-      );
-
-      if (existingMember) {
-        return res.status(400).json({
-          success: false,
-          error: 'User is already a member of this project'
-        });
-      }
-
-      // Add member with role-based permissions
-      const newMember = {
-        user: userToInvite._id,
-        role: role,
-        joinedAt: new Date()
-      };
-
-      project.members.push(newMember);
-      await project.save();
-      await project.populate('members.user', 'name email department jobTitle');
-
-      // Emit real-time update
-      socketService.emitToProject(project._id, 'project:member_added', {
-        projectId: project._id,
-        member: newMember,
-        addedBy: req.user.name,
-        timestamp: new Date()
-      });
-
-      // Create notification
-      const Notification = require('../models/notification.model');
-      await Notification.create({
-        title: 'Added to Project',
-        message: `You have been added to project "${project.title}" as ${role}`,
-        type: 'member_added',
-        recipient: userToInvite._id,
-        sender: req.user.id,
-        relatedProject: project._id,
-        actionUrl: `/projects/${project._id}`,
-        metadata: { role }
-      });
-
-      res.status(201).json({
+    // --- Respond to client ---
+    if (emailResult.success) {
+      res.status(200).json({
         success: true,
-        message: 'User added to project successfully',
-        data: project
+        message: 'Invitation email sent successfully',
+        data: {
+          email,
+          role,
+          inviteToken,
+          projectId: project._id,
+          inviteLink
+        }
       });
     } else {
-      // User doesn't exist - send email invitation
-      const crypto = require('crypto');
-      const inviteToken = crypto.randomBytes(20).toString('hex');
-      
-      // Store invitation in project (you might want to create a separate Invitation model)
-      if (!project.pendingInvitations) {
-        project.pendingInvitations = [];
-      }
-      
-      // Remove any existing invitation for this email
-      project.pendingInvitations = project.pendingInvitations.filter(
-        invite => invite.email !== email.toLowerCase()
-      );
-      
-      // Add new invitation
-      project.pendingInvitations.push({
-        email: email.toLowerCase(),
-        role: role,
-        token: inviteToken,
-        invitedBy: req.user.id,
-        invitedAt: new Date(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-      });
-      
-      await project.save();
-
-      // Try to send email invitation
-      const emailService = require('../services/email.service');
-      
-      if (emailService.isAvailable()) {
-        const emailResult = await emailService.sendProjectInvitation({
-          email: email.toLowerCase(),
-          projectName: project.title,
-          inviterName: req.user.name,
-          inviteToken: inviteToken,
-          projectId: project._id
-        });
-
-        if (emailResult.success) {
-          res.status(200).json({
-            success: true,
-            message: 'Invitation email sent successfully',
-            data: {
-              email: email.toLowerCase(),
-              role: role,
-              inviteToken: inviteToken,
-              projectId: project._id
-            }
-          });
-        } else {
-          // Email failed but invitation is stored
-          console.error('Email sending failed:', emailResult.error);
-          res.status(200).json({
-            success: true,
-            message: 'Invitation created but email delivery failed',
-            data: {
-              email: email.toLowerCase(),
-              role: role,
-              inviteToken: inviteToken,
-              projectId: project._id,
-              note: 'Please share the invitation link manually'
-            }
-          });
+      // Email failed but invitation is stored
+      console.error('Email sending failed:', emailResult.error);
+      res.status(200).json({
+        success: true,
+        message: 'Invitation created but email delivery failed',
+        data: {
+          email,
+          role,
+          inviteToken,
+          projectId: project._id,
+          inviteLink,
+          note: 'Please share the invitation link manually'
         }
-      } else {
-        // Email service not configured
-        const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/accept-invitation/${inviteToken}?project=${project._id}`;
-        
-        res.status(200).json({
-          success: true,
-          message: 'Invitation created (email service not configured)',
-          data: {
-            email: email.toLowerCase(),
-            role: role,
-            inviteToken: inviteToken,
-            inviteLink: inviteLink,
-            projectId: project._id,
-            note: 'Please share this invitation link with the user'
-          }
-        });
-      }
+      });
     }
   } catch (error) {
     next(error);
@@ -1121,203 +1041,153 @@ exports.removeMember = async (req, res, next) => {
  */
 exports.acceptInvitation = async (req, res, next) => {
   try {
-    const { token } = req.params;
-    const { projectId } = req.body;
+    const { token } = req.params; // Route parameter for the invitation token
+    const { projectId } = req.body; // ProjectId must be sent in the request body
 
-    if (!token) {
+    if (!projectId) {
       return res.status(400).json({
         success: false,
-        error: 'Invitation token is required'
+        error: 'Project ID is required in the request body.'
       });
     }
 
-    // Extract projectId from query params if not in body
-    const finalProjectId = projectId || req.query.project;
-
-    if (!finalProjectId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Project ID is required'
-      });
-    }
-
-    const project = await Project.findById(finalProjectId);
+    const project = await Project.findById(projectId);
     if (!project) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found'
-      });
+      return res.status(404).json({ success: false, error: 'Project not found.' });
     }
 
-    // Find the invitation
-    const invitation = project.pendingInvitations.find(inv => 
-      inv.token === token && inv.status === 'pending'
+    const invitation = project.pendingInvitations.find(
+      (inv) => inv.token === token && inv.status === 'pending'
     );
 
     if (!invitation) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        error: 'Invalid or expired invitation'
+        error: 'Invitation is invalid, expired, or already used. Please request a new invitation.',
       });
     }
 
-    // Check if invitation has expired
-    if (new Date() > invitation.expiresAt) {
+    if (invitation.expiresAt && new Date(invitation.expiresAt) < new Date()) {
       invitation.status = 'expired';
       await project.save();
       return res.status(400).json({
         success: false,
-        error: 'Invitation has expired'
+        error: 'Invitation has expired. Please request a new invitation.',
       });
     }
 
-    // Check if user with invitation email already exists
-    const User = require('../models/user.model');
-    const existingUser = await User.findOne({ email: invitation.email.toLowerCase() });
+    // Critical: Ensure invitation.email is valid before using toLowerCase()
+    if (typeof invitation.email !== 'string' || !invitation.email) {
+      console.error('[ACCEPT_INVITE] Invalid invitation email:', invitation.email, 'for token:', token);
+      return res.status(500).json({ success: false, error: 'Invalid invitation data: Email is missing or invalid.' });
+    }
+    const invitedEmailLower = invitation.email.toLowerCase(); // Define invitedEmailLower here
 
-    // If user is authenticated
-    if (req.user) {
-      // Verify the authenticated user's email matches the invitation
-      if (req.user.email.toLowerCase() !== invitation.email.toLowerCase()) {
-        return res.status(400).json({
+    if (req.user && req.user.id) { // User IS authenticated
+      const authenticatedUser = await User.findById(req.user.id);
+      if (!authenticatedUser) {
+        return res.status(401).json({
           success: false,
-          error: 'This invitation is for a different email address'
-        });
-      }
-
-      // Check if user is already a member
-      const existingMember = project.members.find(m => 
-        (m.user._id || m.user).toString() === req.user.id
-      );
-
-      if (existingMember) {
-        invitation.status = 'accepted';
-        await project.save();
-        return res.status(200).json({
-          success: true,
-          message: 'You are already a member of this project',
+          error: 'Authenticated user not found. Your session may be invalid. Please log out and try again.',
           data: {
-            project: project,
-            role: existingMember.role,
-            redirectTo: `/projects/${project._id}`
+            requiresAuth: true, authMode: 'login',
+            invitationEmail: invitation.email, projectName: project.title, role: invitation.role,
+            userExists: await User.exists({ email: invitedEmailLower }), // Check if an account for the invite email exists
+            projectId: project._id, needsLogout: true
           }
         });
       }
 
-      // Add user to project
-      const rolePermissions = {
-        'supervisor': { 
-          canAssignTasks: true,
-          canEditProject: true, 
-          canManageMembers: true, 
-          canDeleteProject: true, 
-          canViewReports: true,
-          canCreateTasks: true,
-          canEditTasks: true,
-          canManageFiles: true,
-          canInviteMembers: true
-        },
-        'team-lead': { 
-          canAssignTasks: true,
-          canEditProject: false, 
-          canManageMembers: true, 
-          canDeleteProject: false, 
-          canViewReports: true,
-          canCreateTasks: true,
-          canEditTasks: true,
-          canManageFiles: true,
-          canInviteMembers: true
-        },
-        'team-member': { 
-          canAssignTasks: false,
-          canEditProject: false, 
-          canManageMembers: false, 
-          canDeleteProject: false, 
-          canViewReports: true,
-          canCreateTasks: true,
-          canEditTasks: true,
-          canManageFiles: false
-        }
-      };
+      if (typeof authenticatedUser.email !== 'string' || !authenticatedUser.email) {
+        console.error('[ACCEPT_INVITE] Authenticated user has invalid email:', authenticatedUser.email);
+        return res.status(500).json({ success: false, error: 'Authenticated user profile is incomplete (missing email).' });
+      }
+      const authenticatedEmailLower = authenticatedUser.email.toLowerCase();
 
-      const newMember = {
-        user: req.user.id,
-        role: invitation.role,
-        joinedAt: new Date(),
-        permissions: rolePermissions[invitation.role] || rolePermissions['team-member']
-      };
-
-      project.members.push(newMember);
-      invitation.status = 'accepted';
-      await project.save();
-      await project.populate('members.user', 'name email department jobTitle');
-
-      // Emit real-time update
-      socketService.emitToProject(project._id, 'project:member_added', {
-        projectId: project._id,
-        member: newMember,
-        joinedViaInvite: true,
-        timestamp: new Date()
-      });
-
-      // Create notifications for project members
-      const Notification = require('../models/notification.model');
-      const memberNotifications = [];
-      
-      const otherMembers = project.members
-        .filter(m => (m.user._id || m.user).toString() !== req.user.id)
-        .map(m => m.user._id || m.user);
-
-      for (const memberId of otherMembers) {
-        memberNotifications.push({
-          title: 'New Team Member',
-          message: `${req.user.name} has joined the project "${project.title}"`,
-          type: 'member_added',
-          recipient: memberId,
-          sender: req.user.id,
-          relatedProject: project._id,
-          actionUrl: `/projects/${project._id}`,
-          metadata: { newMemberRole: invitation.role }
+      if (authenticatedEmailLower !== invitedEmailLower) {
+        return res.status(403).json({
+          success: false,
+          error: `This invitation is for ${invitation.email}. You are logged in as ${authenticatedUser.email}. Please log out and use the correct account.`,
+          data: {
+            requiresAuth: true, authMode: 'login',
+            invitationEmail: invitation.email, projectName: project.title, role: invitation.role,
+            userExists: true, // An account for authenticatedEmailLower exists
+            projectId: project._id, currentAccount: authenticatedUser.email, needsLogout: true
+          }
         });
       }
 
-      if (memberNotifications.length > 0) {
-        await Notification.insertMany(memberNotifications);
-      }
+      const existingMember = project.members.find(
+        (m) => (m.user._id || m.user).toString() === authenticatedUser._id.toString()
+      );
 
-      res.status(200).json({
+      if (existingMember) {
+        invitation.status = 'accepted'; // Mark as accepted
+        invitation.acceptedAt = new Date();
+        invitation.acceptedBy = authenticatedUser._id;
+        await project.save();
+        return res.status(200).json({
+          success: true,
+          message: 'You are already a member of this project.',
+          data: {
+            project: { _id: project._id, title: project.title },
+            role: existingMember.role,
+            redirectTo: `/projects/${project._id}`,
+            requiresAuth: false,
+          },
+        });
+      }
+      
+      const rolePermissions = getPermissionsForRole(invitation.role); // Ensure getPermissionsForRole is defined
+
+      project.members.push({
+        user: authenticatedUser._id,
+        role: invitation.role,
+        joinedAt: new Date(),
+        permissions: rolePermissions,
+        invitedBy: invitation.invitedBy,
+      });
+
+      invitation.status = 'accepted';
+      invitation.acceptedAt = new Date();
+      invitation.acceptedBy = authenticatedUser._id;
+
+      await project.save();
+      
+      // TODO: Send notifications (e.g., to inviter or team)
+
+      return res.status(200).json({
         success: true,
-        message: 'Successfully joined the project! Welcome to the team.',
+        message: `Successfully joined project '${project.title}' as ${invitation.role}.`,
         data: {
-          project: project,
+          project: { _id: project._id, title: project.title },
           role: invitation.role,
           redirectTo: `/projects/${project._id}`,
-          confirmationMessage: `You have successfully joined "${project.title}" as a ${invitation.role}.`
-        }
+          requiresAuth: false,
+        },
       });
-    } else {
-      // User is not authenticated - determine if they need to login or register
-      const authMode = existingUser ? 'login' : 'register';
-      
-      res.status(200).json({
+
+    } else { // User is NOT authenticated (initial check by frontend)
+      const userAccountExists = await User.exists({ email: invitedEmailLower }); // Use .exists for boolean
+      return res.status(200).json({
         success: true,
-        message: existingUser 
-          ? 'User account found. Please login to join the project.' 
-          : 'Please create an account to join the project.',
         data: {
-          projectName: project.title,
-          projectDescription: project.description,
-          role: invitation.role,
-          invitationEmail: invitation.email,
           requiresAuth: true,
-          authMode: authMode, // 'login' or 'register'
-          userExists: !!existingUser,
-          projectId: project._id
-        }
+          authMode: userAccountExists ? 'login' : 'register',
+          invitationEmail: invitation.email, // Original casing for display
+          projectName: project.title,
+          role: invitation.role,
+          userExists: !!userAccountExists,
+          projectId: project._id,
+        },
       });
     }
   } catch (error) {
-    next(error);
+    console.error('Error in acceptInvitation:', error.message, error.stack);
+    // Avoid sending detailed stack traces to the client in production
+    const clientErrorMessage = 'An unexpected error occurred while processing the invitation. Please try again.';
+    res.status(500).json({ success: false, error: clientErrorMessage });
+    // next(error); // If you have a more sophisticated JSON error handler middleware
   }
 };
 
@@ -1447,4 +1317,30 @@ exports.getProjectMembers = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// Helper function to get permissions based on role (align with addMember)
+const getPermissionsForRole = (role) => {
+  const normalizedRole = String(role).toLowerCase().replace(' ', '-');
+  const permissions = {
+    'supervisor': {
+      canAssignTasks: true, canEditProject: true, canManageMembers: true,
+      canDeleteProject: true, canViewReports: true, canCreateTasks: true,
+      canEditTasks: true, canManageFiles: true, canInviteMembers: true,
+      canModerateDiscussions: true
+    },
+    'team-lead': {
+      canAssignTasks: true, canEditProject: false, canManageMembers: true,
+      canDeleteProject: false, canViewReports: true, canCreateTasks: true,
+      canEditTasks: true, canManageFiles: true, canInviteMembers: true,
+      canModerateDiscussions: false // Assuming team-lead cannot moderate by default
+    },
+    'team-member': {
+      canAssignTasks: false, canEditProject: false, canManageMembers: false,
+      canDeleteProject: false, canViewReports: true, canCreateTasks: true,
+      canEditTasks: true, canManageFiles: false, canInviteMembers: false,
+      canModerateDiscussions: false
+    }
+  };
+  return permissions[normalizedRole] || permissions['team-member']; // Default to team-member
 };
