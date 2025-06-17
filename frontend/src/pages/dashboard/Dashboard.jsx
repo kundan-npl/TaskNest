@@ -314,7 +314,7 @@ const Dashboard = () => {
             <div className="space-y-3">
               {projects.slice(0, 3).map((project) => (
                 <Link 
-                  key={project.id}
+                  key={project.id || project._id}
                   to={`/projects/${project.id}`}
                   className="block p-3 border rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -369,7 +369,7 @@ const Dashboard = () => {
                     <div className="space-y-2">
                       {overdueTasks.slice(0, 2).map(task => (
                         <Link
-                          key={task.id}
+                          key={task.id || task._id}
                           to={`/tasks/${task.id}`}
                           className="block p-2 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
                         >
@@ -396,7 +396,7 @@ const Dashboard = () => {
                       .slice(0, 3)
                       .map(task => (
                         <Link
-                          key={task.id}
+                          key={task.id || task._id}
                           to={`/tasks/${task.id}`}
                           className="block p-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
                         >
@@ -565,7 +565,7 @@ const Dashboard = () => {
               </div>
               <div className="mt-3 space-y-3">
                 {systemHealth?.recentEvents?.map((event, index) => (
-                  <div key={index} className="flex items-center justify-between">
+                  <div key={event.id || index} className="flex items-center justify-between">
                     <div className="flex items-center">
                       <div className={`rounded-full w-2 h-2 mr-2 ${
                         event.type === 'success' ? 'bg-green-500' :

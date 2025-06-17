@@ -52,11 +52,19 @@ const dashboardService = {
   },
 
   // System health (admin only)
-  getSystemHealth: async () => {
+  getSystemHealth: async (currentUser) => {
+    // Only call if user is admin
+    if (!currentUser || (currentUser.systemRole !== 'admin' && currentUser.role !== 'admin')) {
+      return null;
+    }
     try {
       const response = await api.get('/dashboard/system-health');
       return response.data.data;
     } catch (error) {
+      // Hide 403 errors for non-admins
+      if (error.response && error.response.status === 403) {
+        return null;
+      }
       throw new Error(error.response?.data?.error || 'Failed to fetch system health');
     }
   }

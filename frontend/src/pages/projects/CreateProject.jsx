@@ -36,6 +36,7 @@ const CreateProject = () => {
   });
   const [tagInput, setTagInput] = useState('');
   const [errors, setErrors] = useState({});
+  const [inviteEmails, setInviteEmails] = useState([]);
 
   useEffect(() => {
     fetchAvailableUsers();
@@ -170,10 +171,24 @@ const CreateProject = () => {
           { user: currentUser.id, role: 'supervisor' },
           ...formData.members
         ]
+        // Do NOT include inviteEmails here
       };
       
       const result = await projectService.createProject(projectData);
-      
+      // Send invites for each email in EnhancedMemberManagement
+      if (inviteEmails && inviteEmails.length > 0) {
+        for (const invite of inviteEmails) {
+          try {
+            await projectService.inviteMember(result._id, {
+              email: invite.email,
+              role: invite.role
+            });
+            toast.success(`Invitation sent to ${invite.email}`);
+          } catch (err) {
+            toast.error(`Failed to invite ${invite.email}: ${err.message}`);
+          }
+        }
+      }
       toast.success('Project created successfully!');
       navigate(`/projects/${result._id}`);
       
@@ -214,6 +229,8 @@ const CreateProject = () => {
             loadingUsers={loadingUsers}
             handleMemberToggle={handleMemberToggle}
             handleMemberRoleChange={handleMemberRoleChange}
+            inviteEmails={inviteEmails}
+            setInviteEmails={setInviteEmails}
           />
           
           <ProjectSettings 

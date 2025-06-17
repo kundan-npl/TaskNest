@@ -15,11 +15,12 @@ const EnhancedMemberManagement = ({
   availableUsers, 
   loadingUsers, 
   handleMemberToggle, 
-  handleMemberRoleChange 
+  handleMemberRoleChange,
+  inviteEmails,
+  setInviteEmails
 }) => {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState('team-member');
-  const [inviteEmails, setInviteEmails] = useState([]);
   const [emailInput, setEmailInput] = useState('');
 
   const roleOptions = [
@@ -210,85 +211,6 @@ const EnhancedMemberManagement = ({
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Existing Users Selection */}
-      <div>
-        <div className="flex items-center space-x-2 mb-4">
-          <UserCircleIcon className="h-5 w-5 text-gray-600" />
-          <h3 className="text-sm font-medium text-gray-900">Select from Organization</h3>
-        </div>
-        
-        <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-sm text-gray-600 mb-4">
-            You will automatically be added as the project supervisor. Select additional team members:
-          </p>
-          
-          {loadingUsers ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto"></div>
-              <p className="text-sm text-gray-500 mt-2">Loading team members...</p>
-            </div>
-          ) : availableUsers.length === 0 ? (
-            <div className="text-center py-8">
-              <UserCircleIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">No other users available in your organization</p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {availableUsers.map((user) => {
-                const isSelected = formData.members.some(m => m.user === user._id);
-                const memberData = formData.members.find(m => m.user === user._id);
-                
-                return (
-                  <div key={user._id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleMemberToggle(user._id)}
-                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                        />
-                        {isSelected && (
-                          <CheckCircleIcon className="absolute -top-1 -right-1 h-3 w-3 text-green-500" />
-                        )}
-                      </div>
-                      
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-medium">
-                        {user.name.charAt(0).toUpperCase()}
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
-                        {user.department && (
-                          <p className="text-xs text-gray-400">{user.department}</p>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {isSelected && (
-                      <div className="flex items-center space-x-2">
-                        <select
-                          value={memberData?.role || 'team-member'}
-                          onChange={(e) => handleMemberRoleChange(user._id, e.target.value)}
-                          className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        >
-                          {roleOptions.map(role => (
-                            <option key={role.value} value={role.value}>
-                              {role.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
 
