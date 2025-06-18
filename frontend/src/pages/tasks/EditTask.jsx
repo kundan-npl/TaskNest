@@ -37,6 +37,7 @@ const EditTask = () => {
     priority: 'medium',
     dueDate: '',
     assignedTo: [],
+    assignedToUsers: [], // Store user objects for display
     projectId: projectId || '',
     subtasks: []
   });
@@ -47,13 +48,43 @@ const EditTask = () => {
       try {
         setLoading(true);
         const task = await taskService.getTaskByIdSimple(taskId);
+        console.log('[EditTask] Loaded task data:', task);
+        
+        // Ensure assignedTo is properly handled - fix for object vs ID format
+        let assignedToIds = [];
+        let assignedToUsers = []; // Keep user objects for display
+        if (task.assignedTo && Array.isArray(task.assignedTo)) {
+          assignedToIds = task.assignedTo.map(user => {
+            // Handle different formats: could be user objects (from getTaskByIdSimple) or just IDs
+            if (typeof user === 'string') return user;
+            const userId = user._id || user.id || user;
+            // Store user object for display purposes
+            if (typeof user === 'object' && user.name) {
+              assignedToUsers.push(user);
+            }
+            return userId;
+          });
+        }
+        
+        console.log('[EditTask] Original task status:', task.status);
+        
+        // Map backend status to frontend form values
+        let formStatus = task.status || 'todo';
+        if (formStatus === 'not-started') formStatus = 'todo';
+        if (formStatus === 'completed') formStatus = 'done';
+        if (formStatus === 'on-hold') formStatus = 'cancelled';
+        // Keep 'in-progress' and 'review' as they are
+        
+        console.log('[EditTask] Mapped form status:', formStatus);
+        
         setFormData({
           title: task.title || '',
           description: task.description || '',
-          status: task.status || 'todo',
+          status: formStatus,
           priority: task.priority || 'medium',
           dueDate: task.dueDate ? task.dueDate.split('T')[0] : '',
-          assignedTo: (task.assignedTo && Array.isArray(task.assignedTo)) ? task.assignedTo.map(u => u._id || u.id || u) : [],
+          assignedTo: assignedToIds,
+          assignedToUsers: assignedToUsers, // Store user objects for display
           projectId: task.projectId || '',
           subtasks: task.subtasks || []
         });
@@ -157,19 +188,39 @@ const EditTask = () => {
         toast.error('Due date is required');
         return;
       }
+      
+      // Prepare submit data while preserving assignments
       let status = formData.status;
-      if (status === 'not-started') status = 'todo';
-      if (status === 'completed') status = 'done';
-      let submitData = { ...formData, status, assignedTo: formData.assignedTo };
+      if (status === 'todo') status = 'todo'; // Keep as is
+      if (status === 'not-started') status = 'todo'; // Handle legacy mapping
+      if (status === 'done') status = 'done'; // Keep as is
+      if (status === 'completed') status = 'done'; // Handle legacy mapping
+      if (status === 'cancelled') status = 'cancelled'; // Keep as is
+      // 'in-progress' and 'review' stay as they are
+      
+      // Only include assignedTo in the update if it has been explicitly changed
+      // For read-only assignment display, we don't want to accidentally clear assignments
+      const submitData = { 
+        ...formData, 
+        status
+        // Note: assignedTo is intentionally excluded from updates to preserve existing assignments
+        // Assignment changes should be handled through dedicated assignment management UI
+      };
+      
+      console.log('[EditTask] Submitting task update with data:', submitData);
+      console.log('[EditTask] Assignment preservation - NOT sending assignedTo to preserve existing assignments');
+      
       await taskService.updateTask(formData.projectId, taskId, submitData);
       toast.success('Task updated successfully');
+      
       if (formData.projectId) {
         navigate(`/projects/${formData.projectId}`);
       } else {
         navigate('/tasks');
       }
     } catch (error) {
-      toast.error('Failed to update task');
+      console.error('[EditTask] Error updating task:', error);
+      toast.error('Failed to update task: ' + (error.message || 'Unknown error'));
     } finally {
       setSubmitting(false);
     }
@@ -306,42 +357,72 @@ const EditTask = () => {
                   />
                 </div>
               </div>
-              {/* Assigned To - Only show if user has assignment permissions */}
-              {(!permissions || permissions.canAssignTasks) && members.length > 0 && (
+              {/* Assigned To - Always visible but read-only */}
+              {isProjectTask && (
                 <div className="space-y-2">
                   <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
                     <UserGroupIcon className="h-4 w-4 text-indigo-500" />
                     <span>Assigned To</span>
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {members.map(member => {
-                      const memberId = member.user._id || member.user.id || member.user;
-                      const checked = formData.assignedTo.includes(memberId);
-                      return (
-                        <label
-                          key={memberId}
-                          className={`inline-flex items-center px-3 py-1 bg-white border border-gray-200 rounded-full text-xs cursor-pointer shadow-sm hover:bg-indigo-50 transition-all max-w-none whitespace-nowrap ${checked ? 'ring-2 ring-indigo-400' : ''}`}
-                          style={{ minWidth: '120px', maxWidth: '220px' }}
-                          title={member.user.name}
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-checkbox h-4 w-4 text-indigo-600 mr-1 accent-indigo-600"
-                            checked={checked}
-                            onChange={e => {
-                              setFormData(prev => {
-                                const assignedTo = checked
-                                  ? prev.assignedTo.filter(id => id !== memberId)
-                                  : [...prev.assignedTo, memberId];
-                                return { ...prev, assignedTo };
-                              });
-                            }}
-                          />
-                          <span className="font-medium overflow-hidden text-ellipsis" style={{maxWidth: '120px', display: 'inline-block', whiteSpace: 'nowrap', verticalAlign: 'middle'}}>{member.user.name}</span>
-                          <span className="ml-1 text-gray-400 font-normal">({member.role})</span>
-                        </label>
-                      );
-                    })}
+                  {formData.assignedTo && formData.assignedTo.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {(() => {
+                        // First, try to use the stored user objects from task data
+                        let assignedUsersToDisplay = [];
+                        
+                        if (formData.assignedToUsers && formData.assignedToUsers.length > 0) {
+                          // Use stored user objects from task data
+                          assignedUsersToDisplay = formData.assignedToUsers.map(user => ({
+                            user: user,
+                            role: 'Member' // Default role since we don't have project membership info
+                          }));
+                        } else {
+                          // Fallback to filtering from project members
+                          assignedUsersToDisplay = members.filter(member => {
+                            const memberId = member.user._id || member.user.id || member.user;
+                            return formData.assignedTo.includes(memberId);
+                          });
+                        }
+                        
+                        return assignedUsersToDisplay.map((member, index) => {
+                          const memberId = member.user._id || member.user.id || member.user;
+                          const userName = member.user.name || 'Unknown User';
+                          const userRole = member.role || 'Member';
+                          
+                          return (
+                            <div
+                              key={memberId || index}
+                              className="inline-flex items-center px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-full text-sm shadow-sm"
+                              title={userName}
+                            >
+                              <div className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></div>
+                              <span className="font-medium text-indigo-700">{userName}</span>
+                              <span className="ml-1 text-indigo-500 font-normal">({userRole})</span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                      <span className="italic">No users assigned to this task</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 italic">
+                    Task assignments are preserved during updates. Contact project admin to change assignments.
+                  </p>
+                </div>
+              )}
+              
+              {/* Personal Tasks - Show different message for non-project tasks */}
+              {!isProjectTask && (
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                    <UserGroupIcon className="h-4 w-4 text-gray-500" />
+                    <span>Assignment</span>
+                  </label>
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                    <span className="font-medium">Personal Task</span> - This task is not part of a project and is assigned to you.
                   </div>
                 </div>
               )}

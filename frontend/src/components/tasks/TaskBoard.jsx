@@ -1,11 +1,9 @@
 import React from 'react';
-import EnhancedTaskCard from './EnhancedTaskCard';
+import CleanTaskCard from './CleanTaskCard';
 import TaskStatusBadge from '../common/TaskStatusBadge';
 
 const TaskBoard = ({ 
-  tasksByStatus, 
-  selectedTasks, 
-  onTaskSelection
+  tasksByStatus
 }) => {
   const statusColumns = [
     { 
@@ -21,6 +19,13 @@ const TaskBoard = ({
       color: 'blue',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-200'
+    },
+    { 
+      key: 'review', 
+      title: 'In Review', 
+      color: 'orange',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200'
     },
     { 
       key: 'on-hold', 
@@ -39,7 +44,7 @@ const TaskBoard = ({
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
       {statusColumns.map((column) => {
         const tasks = tasksByStatus[column.key] || [];
         
@@ -74,35 +79,18 @@ const TaskBoard = ({
               flex-1 ${column.bgColor} ${column.borderColor}
               border border-t-0 rounded-b-xl p-4 min-h-96
             `}>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {tasks.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <div className="text-sm">No tasks in this status</div>
                   </div>
                 ) : (
                   tasks.map((task) => (
-                    <div key={task.id} className="relative">
-                      <div className="flex items-start gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedTasks.has(task.id)}
-                          onChange={() => onTaskSelection(task.id)}
-                          className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                        />
-                        <div className="flex-1">
-                          <EnhancedTaskCard
-                            task={task}
-                            variant="board"
-                            showProject={true}
-                            showAssignee={true}
-                            showDueDate={true}
-                            showSubtasks={true}
-                            showTags={true}
-                            className="shadow-sm hover:shadow-md"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    <CleanTaskCard
+                      key={task.id}
+                      task={task}
+                      variant="board"
+                    />
                   ))
                 )}
               </div>

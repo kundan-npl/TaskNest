@@ -108,6 +108,14 @@ const deleteFile = async (key) => {
  * @returns {Promise<Array>} - Array of file information
  */
 const listFiles = async (prefix) => {
+  // Check if we're using mock/development credentials
+  if (process.env.AWS_ACCESS_KEY_ID === 'your_access_key_id' || 
+      process.env.NODE_ENV === 'development' && 
+      !process.env.AWS_ACCESS_KEY_ID?.startsWith('AKIA')) {
+    console.log('Mock S3 credentials detected, returning empty file list');
+    return [];
+  }
+
   const command = new ListObjectsV2Command({
     Bucket: bucketName,
     Prefix: prefix
@@ -122,6 +130,11 @@ const listFiles = async (prefix) => {
     }));
   } catch (error) {
     console.error('Error listing files from S3:', error);
+    // In development, return empty array instead of throwing
+    if (process.env.NODE_ENV === 'development') {
+      console.log('S3 operation failed in development, returning empty array');
+      return [];
+    }
     throw new Error('Failed to list files');
   }
 };

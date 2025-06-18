@@ -118,6 +118,14 @@ const fileService = {
     }
     
     try {
+      // Check if we're in development with mock S3 credentials
+      if (process.env.AWS_ACCESS_KEY_ID === 'your_access_key_id' || 
+          process.env.NODE_ENV === 'development' && 
+          !process.env.AWS_ACCESS_KEY_ID?.startsWith('AKIA')) {
+        console.log('Mock S3 environment detected, returning empty file list');
+        return [];
+      }
+      
       const files = await s3Config.listFiles(prefix);
       
       // Get download URLs for each file
@@ -138,6 +146,11 @@ const fileService = {
       return filesWithUrls;
     } catch (error) {
       console.error('Error listing files:', error);
+      // Instead of throwing error, return empty array in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('File listing failed in development, returning empty array');
+        return [];
+      }
       throw new Error('Failed to list files');
     }
   }

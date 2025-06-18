@@ -235,18 +235,29 @@ exports.getDashboardStats = asyncHandler(async (req, res, next) => {
           return dueDate >= today && dueDate <= threeDaysFromNow && t.status !== 'completed';
         }).length
       },
-      recentProjects: userProjects
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 5)
-        .map(p => ({
-          _id: p._id,
-          name: p.name,
-          status: p.status,
-          priority: p.priority,
-          dueDate: p.dueDate,
-          progress: p.tasks?.completed / p.tasks?.total * 100 || 0,
-          memberCount: p.members?.length || 0
-        })),
+      recentProjects: await Promise.all(
+        userProjects
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .slice(0, 5)
+          .map(async (p) => {
+            // Calculate progress based on actual task completion
+            const [totalTasks, completedTasks] = await Promise.all([
+              Task.countDocuments({ project: p._id }),
+              Task.countDocuments({ project: p._id, status: { $in: ['completed', 'done'] } })
+            ]);
+            const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            
+            return {
+              _id: p._id,
+              name: p.name,
+              status: p.status,
+              priority: p.priority,
+              dueDate: p.dueDate,
+              progress: progress,
+              memberCount: p.members?.length || 0
+            };
+          })
+      ),
       recentTasks: userTasks
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 10)

@@ -245,9 +245,38 @@ exports.updateTask = async (req, res, next) => {
       });
     }
     
+    // Handle assignedTo field properly - preserve existing assignments if not provided
+    const updateData = { ...req.body };
+    
+    console.log('[UpdateTask] Received req.body:', JSON.stringify(req.body, null, 2));
+    console.log('[UpdateTask] Current task assignedTo:', JSON.stringify(task.assignedTo, null, 2));
+    
+    // If assignedTo is provided as an array of user IDs, convert to proper format
+    if (updateData.assignedTo && Array.isArray(updateData.assignedTo)) {
+      if (updateData.assignedTo.length > 0 && typeof updateData.assignedTo[0] === 'string') {
+        // Convert array of user IDs to proper assignedTo format
+        updateData.assignedTo = updateData.assignedTo.map(userId => ({
+          user: userId,
+          assignedAt: new Date(),
+          assignedBy: req.user.id
+        }));
+        console.log('[UpdateTask] Converted assignedTo format:', JSON.stringify(updateData.assignedTo, null, 2));
+      } else if (updateData.assignedTo.length === 0) {
+        // If empty array is provided, clear assignments
+        console.log('[UpdateTask] Empty assignedTo array provided, clearing assignments');
+      }
+      // If it's already in the correct format, leave it as is
+    } else if (updateData.assignedTo === undefined) {
+      // If assignedTo is not provided, don't update it (preserve existing assignments)
+      delete updateData.assignedTo;
+      console.log('[UpdateTask] assignedTo not provided, preserving existing assignments');
+    }
+    
+    console.log('[UpdateTask] Final updateData:', JSON.stringify(updateData, null, 2));
+    
     task = await Task.findByIdAndUpdate(
       id,
-      req.body,
+      updateData,
       {
         new: true,
         runValidators: true
@@ -296,8 +325,15 @@ exports.deleteTask = async (req, res, next) => {
     // Check if user has access to delete the task
     const project = await Project.findById(projectId);
     
-    const isTeamMember = project.team.some(memberId => 
-      memberId.toString() === req.user.id
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+    
+    const isTeamMember = project.members && project.members.some(member => 
+      (member.user._id || member.user).toString() === req.user.id
     );
     
     if (project.createdBy.toString() !== req.user.id && 
@@ -1088,18 +1124,27 @@ exports.getTaskByIdSimple = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Task not found' });
     }
 
-    // Flatten assignedTo (take first user or null)
-    let assignedToUser = null;
+    // Keep all assigned users instead of flattening to first only
+    const assignedToUsers = [];
     if (Array.isArray(task.assignedTo) && task.assignedTo.length > 0) {
-      assignedToUser = task.assignedTo[0].user;
+      task.assignedTo.forEach(assignment => {
+        if (assignment.user) {
+          assignedToUsers.push({
+            _id: assignment.user._id,
+            name: assignment.user.name,
+            avatar: assignment.user.profileImage || '',
+          });
+        }
+      });
     }
 
-    // Map status to frontend expected values
+    // Map status to frontend expected values - fix review mapping
     let status = task.status;
     if (status === 'todo') status = 'not-started';
     if (status === 'in-progress') status = 'in-progress';
     if (status === 'done') status = 'completed';
-    if (status === 'review') status = 'on-hold';
+    if (status === 'review') status = 'review'; // Keep review as review, don't map to on-hold
+    if (status === 'cancelled') status = 'on-hold';
 
     // Compose response
     res.status(200).json({
@@ -1110,11 +1155,7 @@ exports.getTaskByIdSimple = async (req, res, next) => {
         description: task.description,
         status,
         priority: task.priority,
-        assignedTo: assignedToUser ? {
-          _id: assignedToUser._id,
-          name: assignedToUser.name,
-          avatar: assignedToUser.profileImage || '',
-        } : null,
+        assignedTo: assignedToUsers, // Return array of all assigned users
         createdBy: task.createdBy ? {
           _id: task.createdBy._id,
           name: task.createdBy.name,

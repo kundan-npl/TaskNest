@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import projectService from '../../services/projectService';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -386,13 +386,28 @@ const ProjectsList = () => {
 
 // Project Card Component for Grid View
 const ProjectCard = ({ project, onDelete }) => {
+  const navigate = useNavigate();
+
+  const handleCardClick = (e) => {
+    // Don't navigate if clicking on action buttons
+    if (e.target.closest('.action-buttons')) {
+      return;
+    }
+    navigate(`/projects/${project._id}`);
+  };
+
+  const handleActionClick = (e) => {
+    e.stopPropagation();
+  };
+
   return (
-    <div className="border border-gray-200 rounded-lg hover:shadow-lg transition-all duration-200 hover:border-primary-300 bg-white">
+    <div 
+      className="border border-gray-200 rounded-lg hover:shadow-lg transition-all duration-200 hover:border-primary-300 bg-white cursor-pointer"
+      onClick={handleCardClick}
+    >
       <div className="p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
-          <Link to={`/projects/${project._id}`} className="hover:text-primary-600 transition-colors">
-            {project.title}
-          </Link>
+        <h3 className="text-lg font-medium text-gray-900 mb-2 hover:text-primary-600 transition-colors">
+          {project.title}
         </h3>
         <p className="text-sm text-gray-600 mb-4 line-clamp-2">
           {project.description}
@@ -442,7 +457,7 @@ const ProjectCard = ({ project, onDelete }) => {
               </div>
             )}
           </div>
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 action-buttons" onClick={handleActionClick}>
             <Link
               to={`/projects/${project._id}`}
               className="text-primary-600 hover:text-primary-900 text-sm font-medium"

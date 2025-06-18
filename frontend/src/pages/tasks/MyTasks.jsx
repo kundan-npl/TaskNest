@@ -5,12 +5,21 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import projectService from '../../services/projectService';
 import taskService from '../../services/taskService';
 import TaskStatsDashboard from '../../components/tasks/TaskStatsDashboard.jsx';
-import TaskFilters from '../../components/tasks/TaskFilters.jsx';
-import TaskViewControls from '../../components/tasks/TaskViewControls.jsx';
 import TaskList from '../../components/tasks/TaskList.jsx';
 import TaskBoard from '../../components/tasks/TaskBoard.jsx';
 import TaskEmptyState from '../../components/tasks/TaskEmptyState.jsx';
-import { CalendarIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { 
+  CalendarIcon, 
+  PlusIcon, 
+  FunnelIcon, 
+  MagnifyingGlassIcon, 
+  XMarkIcon,
+  ListBulletIcon,
+  Squares2X2Icon,
+  TableCellsIcon,
+  ChevronUpIcon,
+  ChevronDownIcon
+} from '@heroicons/react/24/outline';
 
 const MyTasks = () => {
   const { currentUser } = useAuth();
@@ -32,7 +41,6 @@ const MyTasks = () => {
   const [sortBy, setSortBy] = useState('dueDate'); // 'dueDate', 'priority', 'created', 'title', 'project'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc', 'desc'
   const [showCompleted, setShowCompleted] = useState(false);
-  const [selectedTasks, setSelectedTasks] = useState(new Set());
 
   // Fetch tasks on component mount
   useEffect(() => {
@@ -44,8 +52,16 @@ const MyTasks = () => {
       setLoading(true);
       setError(null);
       
+      console.log('[MyTasks] Current user ID:', currentUser._id);
+      
       // 1. Fetch all projects for the user
       const projects = await projectService.getAllProjects();
+      console.log('[MyTasks] Found projects:', projects?.length);
+      console.log('[MyTasks] Project details:', projects?.map(p => ({ 
+        id: p._id, 
+        name: p.name || p.title 
+      })));
+      
       if (!projects || projects.length === 0) {
         setTasks([]);
         setLoading(false);
@@ -57,20 +73,48 @@ const MyTasks = () => {
       for (const project of projects) {
         try {
           const projectTasks = await taskService.getProjectTasks(project._id);
+          console.log(`[MyTasks] Project ${project.name} has ${projectTasks?.length} tasks`);
+          
           if (Array.isArray(projectTasks)) {
-            // 3. Filter for tasks assigned to the current user (fix: use assignedTo array)
-            const myTasks = projectTasks.filter(
-              (task) => Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id)
-            );
+            // Debug: Log all tasks and their assignedTo values
+            projectTasks.forEach(task => {
+              console.log(`[MyTasks] Task "${task.title}":`, {
+                assignedTo: task.assignedTo,
+                isAssignedToMe: Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id)
+              });
+            });
+            
+            // 3. Filter for tasks assigned to the current user and add project info
+            const myTasks = projectTasks
+              .filter((task) => Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id))
+              .map(task => ({
+                ...task,
+                projectId: project._id,
+                projectName: project.name || project.title
+              }));
+            console.log(`[MyTasks] Found ${myTasks.length} tasks assigned to me in project ${project.name || project.title}`);
+            console.log(`[MyTasks] Sample task with project info:`, myTasks[0] ? {
+              title: myTasks[0].title, 
+              projectId: myTasks[0].projectId, 
+              projectName: myTasks[0].projectName
+            } : 'No tasks');
             allTasks.push(...myTasks);
           }
         } catch (err) {
-          // Optionally handle per-project errors
+          console.error(`[MyTasks] Error fetching tasks for project ${project.name}:`, err);
           continue;
         }
       }
+      
+      console.log('[MyTasks] Total tasks assigned to me:', allTasks.length);
+      console.log('[MyTasks] Sample tasks with project info:', allTasks.slice(0, 2).map(t => ({
+        title: t.title,
+        projectId: t.projectId,
+        projectName: t.projectName
+      })));
       setTasks(allTasks);
     } catch (err) {
+      console.error('[MyTasks] Error fetching tasks:', err);
       setError('Failed to load tasks.');
     } finally {
       setLoading(false);
@@ -79,25 +123,57 @@ const MyTasks = () => {
 
   // Get unique projects for filter dropdown
   const projects = useMemo(() => {
+    console.log('[MyTasks] Building projects dropdown from tasks:', tasks.length);
+    console.log('[MyTasks] Sample task project info:', tasks[0] ? {
+      projectId: tasks[0].projectId,
+      projectName: tasks[0].projectName
+    } : 'No tasks');
+    
     const uniqueProjects = [...new Set(tasks.map(task => JSON.stringify({ id: task.projectId, name: task.projectName })))];
-    return uniqueProjects.map(p => JSON.parse(p));
+    const parsedProjects = uniqueProjects
+      .map(p => JSON.parse(p))
+      .filter(p => p.id && p.name); // Filter out invalid projects
+    
+    console.log('[MyTasks] Projects for dropdown:', parsedProjects);
+    return parsedProjects;
   }, [tasks]);
 
   // Filter and sort tasks
   const filteredAndSortedTasks = useMemo(() => {
+    // Status normalization function
+    const normalizeStatus = (status) => {
+      if (!status) return 'not-started';
+      const statusLower = status.toLowerCase();
+      
+      // Map "done" from backend to "completed" for frontend consistency  
+      if (['completed', 'done', 'finished'].includes(statusLower)) return 'completed';
+      if (['in-progress', 'in_progress', 'inprogress', 'active', 'working'].includes(statusLower)) return 'in-progress';
+      if (['not-started', 'not_started', 'notstarted', 'todo', 'pending', 'new'].includes(statusLower)) return 'not-started';
+      if (['review', 'in-review', 'in_review', 'reviewing'].includes(statusLower)) return 'review';
+      if (['on-hold', 'on_hold', 'onhold', 'paused', 'blocked', 'cancelled'].includes(statusLower)) return 'on-hold';
+      
+      return 'not-started';
+    };
+    
     let filtered = tasks.filter(task => {
-      // Status filter
-      if (filters.status && task.status !== filters.status) return false;
+      // Debug: Log task status
+      console.log(`[MyTasks] Filtering task "${task.title}": raw status="${task.status}", normalized="${normalizeStatus(task.status)}"`);
+      
+      // Status filter - use normalized status
+      if (filters.status && normalizeStatus(task.status) !== filters.status) {
+        console.log(`[MyTasks] Task "${task.title}" filtered out by status filter`);
+        return false;
+      }
       
       // Priority filter
       if (filters.priority && task.priority !== filters.priority) return false;
       
-      // Project filter
-      if (filters.project && task.projectId !== filters.project) return false;
+      // Project filter - check both projectId and project._id for flexibility
+      if (filters.project && task.projectId !== filters.project && task.project?._id !== filters.project) return false;
       
       // Search filter
       if (filters.search && !task.title.toLowerCase().includes(filters.search.toLowerCase()) && 
-          !task.description.toLowerCase().includes(filters.search.toLowerCase())) return false;
+          !task.description?.toLowerCase().includes(filters.search.toLowerCase())) return false;
       
       // Due date filter
       if (filters.dueDate) {
@@ -106,7 +182,7 @@ const MyTasks = () => {
         
         switch (filters.dueDate) {
           case 'overdue':
-            if (dueDate >= today || task.status === 'completed') return false;
+            if (dueDate >= today || normalizeStatus(task.status) === 'completed') return false;
             break;
           case 'today':
             if (dueDate.toDateString() !== today.toDateString()) return false;
@@ -123,7 +199,10 @@ const MyTasks = () => {
       }
       
       // Show/hide completed
-      if (!showCompleted && task.status === 'completed') return false;
+      if (!showCompleted && normalizeStatus(task.status) === 'completed') {
+        console.log(`[MyTasks] Task "${task.title}" filtered out because completed tasks are hidden`);
+        return false;
+      }
       
       return true;
     });
@@ -162,22 +241,95 @@ const MyTasks = () => {
   // Get task statistics
   const taskStats = useMemo(() => {
     const total = tasks.length;
-    const completed = tasks.filter(t => t.status === 'completed').length;
-    const inProgress = tasks.filter(t => t.status === 'in-progress').length;
-    const notStarted = tasks.filter(t => t.status === 'not-started').length;
-    const onHold = tasks.filter(t => t.status === 'on-hold').length;
-    const overdue = tasks.filter(t => new Date(t.dueDate) < new Date() && t.status !== 'completed').length;
     
-    return { total, completed, inProgress, notStarted, onHold, overdue };
+    // Handle different status formats that might come from backend
+    const normalizeStatus = (status) => {
+      if (!status) return 'not-started';
+      const statusLower = status.toLowerCase();
+      
+      // Map various status formats to our expected values
+      if (['completed', 'done', 'finished'].includes(statusLower)) return 'completed';
+      if (['in-progress', 'in_progress', 'inprogress', 'active', 'working'].includes(statusLower)) return 'in-progress';
+      if (['not-started', 'not_started', 'notstarted', 'todo', 'pending', 'new'].includes(statusLower)) return 'not-started';
+      if (['review', 'in-review', 'in_review', 'reviewing'].includes(statusLower)) return 'review';
+      if (['on-hold', 'on_hold', 'onhold', 'paused', 'blocked', 'cancelled'].includes(statusLower)) return 'on-hold';
+      
+      return 'not-started'; // default fallback
+    };
+    
+    const completed = tasks.filter(t => normalizeStatus(t.status) === 'completed').length;
+    const inProgress = tasks.filter(t => normalizeStatus(t.status) === 'in-progress').length;
+    const notStarted = tasks.filter(t => normalizeStatus(t.status) === 'not-started').length;
+    const review = tasks.filter(t => normalizeStatus(t.status) === 'review').length;
+    const onHold = tasks.filter(t => normalizeStatus(t.status) === 'on-hold').length;
+    
+    // Fix overdue calculation - only count tasks with valid due dates that are past due and not completed
+    const overdue = tasks.filter(t => {
+      if (!t.dueDate) return false; // Skip tasks without due dates
+      if (normalizeStatus(t.status) === 'completed') return false; // Skip completed tasks
+      
+      const dueDate = new Date(t.dueDate);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999); // Set to end of today to be more accurate
+      
+      return dueDate < today;
+    }).length;
+    
+    // Debug logging to verify calculations
+    console.log('Task Statistics Debug:', {
+      total,
+      completed,
+      inProgress,
+      notStarted,
+      onHold,
+      overdue,
+      statusSum: completed + inProgress + notStarted + onHold,
+      tasksWithDueDate: tasks.filter(t => t.dueDate).length,
+      rawTasks: tasks.map(t => ({ 
+        title: t.title, 
+        rawStatus: t.status,
+        normalizedStatus: normalizeStatus(t.status),
+        dueDate: t.dueDate,
+        isOverdue: t.dueDate && new Date(t.dueDate) < new Date() && normalizeStatus(t.status) !== 'completed'
+      }))
+    });
+    
+    // Validation: ensure status counts add up correctly
+    const statusSum = completed + inProgress + notStarted + review + onHold;
+    if (statusSum !== total && total > 0) {
+      console.warn('Task status counts do not match total:', {
+        total,
+        statusSum,
+        difference: total - statusSum,
+        possibleUnknownStatuses: tasks.filter(t => !['completed', 'in-progress', 'not-started', 'review', 'on-hold'].includes(normalizeStatus(t.status)))
+      });
+    }
+    
+    return { total, completed, inProgress, notStarted, review, onHold, overdue };
   }, [tasks]);
 
   // Group tasks by status for board view
   const tasksByStatus = useMemo(() => {
+    // Use the same normalization function
+    const normalizeStatus = (status) => {
+      if (!status) return 'not-started';
+      const statusLower = status.toLowerCase();
+      
+      if (['completed', 'done', 'finished'].includes(statusLower)) return 'completed';
+      if (['in-progress', 'in_progress', 'inprogress', 'active', 'working'].includes(statusLower)) return 'in-progress';
+      if (['not-started', 'not_started', 'notstarted', 'todo', 'pending', 'new'].includes(statusLower)) return 'not-started';
+      if (['review', 'in-review', 'in_review', 'reviewing'].includes(statusLower)) return 'review';
+      if (['on-hold', 'on_hold', 'onhold', 'paused', 'blocked', 'cancelled'].includes(statusLower)) return 'on-hold';
+      
+      return 'not-started';
+    };
+    
     return {
-      'not-started': filteredAndSortedTasks.filter(t => t.status === 'not-started'),
-      'in-progress': filteredAndSortedTasks.filter(t => t.status === 'in-progress'),
-      'on-hold': filteredAndSortedTasks.filter(t => t.status === 'on-hold'),
-      'completed': filteredAndSortedTasks.filter(t => t.status === 'completed')
+      'not-started': filteredAndSortedTasks.filter(t => normalizeStatus(t.status) === 'not-started'),
+      'in-progress': filteredAndSortedTasks.filter(t => normalizeStatus(t.status) === 'in-progress'),
+      'review': filteredAndSortedTasks.filter(t => normalizeStatus(t.status) === 'review'),
+      'on-hold': filteredAndSortedTasks.filter(t => normalizeStatus(t.status) === 'on-hold'),
+      'completed': filteredAndSortedTasks.filter(t => normalizeStatus(t.status) === 'completed')
     };
   }, [filteredAndSortedTasks]);
 
@@ -192,55 +344,6 @@ const MyTasks = () => {
       key !== 'assignee' && value !== ''
     );
   }, [filters]);
-
-  // Handle bulk operations
-  const handleBulkStatusUpdate = async (newStatus) => {
-    if (newStatus === 'clear') {
-      setSelectedTasks(new Set());
-      return;
-    }
-
-    if (selectedTasks.size === 0) {
-      toast.warning('Please select tasks to update');
-      return;
-    }
-
-    try {
-      // In real implementation, call API to update multiple tasks
-      // await taskService.bulkUpdateTasks(Array.from(selectedTasks), { status: newStatus });
-      
-      setTasks(prev => prev.map(task => 
-        selectedTasks.has(task.id) ? { ...task, status: newStatus } : task
-      ));
-      
-      setSelectedTasks(new Set());
-      toast.success(`Updated ${selectedTasks.size} tasks to ${newStatus.replace('-', ' ')}`);
-    } catch (error) {
-      toast.error('Failed to update tasks');
-    }
-  };
-
-  // Handle task selection
-  const handleTaskSelection = (taskId) => {
-    setSelectedTasks(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(taskId)) {
-        newSet.delete(taskId);
-      } else {
-        newSet.add(taskId);
-      }
-      return newSet;
-    });
-  };
-
-  // Select all visible tasks
-  const handleSelectAll = () => {
-    if (selectedTasks.size === filteredAndSortedTasks.length) {
-      setSelectedTasks(new Set());
-    } else {
-      setSelectedTasks(new Set(filteredAndSortedTasks.map(t => t.id)));
-    }
-  };
 
   // Reset filters
   const resetFilters = () => {
@@ -355,45 +458,301 @@ const MyTasks = () => {
         {/* Statistics Dashboard */}
         <TaskStatsDashboard stats={taskStats} />
 
-        {/* Filters Section */}
-        <TaskFilters
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          projects={projects}
-          onResetFilters={resetFilters}
-          hasActiveFilters={hasActiveFilters}
-          showCompleted={showCompleted}
-          onToggleCompleted={setShowCompleted}
-        />
-
-        {/* View Controls and Bulk Actions */}
-        <TaskViewControls
-          view={view}
-          onViewChange={setView}
-          sortBy={sortBy}
-          onSortByChange={setSortBy}
-          sortOrder={sortOrder}
-          onSortOrderChange={setSortOrder}
-          selectedTasks={selectedTasks}
-          onBulkAction={handleBulkStatusUpdate}
-          onSelectAll={handleSelectAll}
-          filteredTasksCount={filteredAndSortedTasks.length}
-          allSelected={selectedTasks.size === filteredAndSortedTasks.length}
-        />
-
-        {/* Task Content */}
+        {/* Unified Container - Filter Panel + Task Content */}
         {filteredAndSortedTasks.length === 0 ? (
-          <TaskEmptyState
-            hasNoTasks={tasks.length === 0}
-            onResetFilters={resetFilters}
-          />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            {/* Controls Panel */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-gray-200">
+              {/* Left side - View toggle and filters */}
+              <div className="flex items-center gap-3">
+                {/* View Toggle */}
+                <div className="inline-flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setView('list')}
+                    className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      view === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                    title="List View"
+                  >
+                    <ListBulletIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setView('board')}
+                    className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      view === 'board' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                    title="Board View"
+                  >
+                    <Squares2X2Icon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setView('compact')}
+                    className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      view === 'compact' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                    title="Compact View"
+                  >
+                    <TableCellsIcon className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div className="h-6 w-px bg-gray-300"></div>
+
+                {/* Filters */}
+                <select
+                  value={filters.project}
+                  onChange={(e) => handleFilterChange('project', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Status</option>
+                  <option value="not-started">Not Started</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="review">In Review</option>
+                  <option value="on-hold">On Hold</option>
+                  <option value="completed">Completed</option>
+                </select>
+
+                <select
+                  value={filters.priority}
+                  onChange={(e) => handleFilterChange('priority', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Priority</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+
+                <select
+                  value={filters.dueDate}
+                  onChange={(e) => handleFilterChange('dueDate', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Due Dates</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="today">Due Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                </select>
+
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="dueDate">Sort: Due Date</option>
+                  <option value="priority">Sort: Priority</option>
+                  <option value="created">Sort: Created</option>
+                  <option value="title">Sort: Title</option>
+                </select>
+
+                {/* Show Completed Toggle */}
+                <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showCompleted}
+                    onChange={(e) => setShowCompleted(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                  Show Completed
+                </label>
+              </div>
+
+              {/* Right side - Search and clear filters */}
+              <div className="flex items-center gap-3">
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={resetFilters}
+                    className="inline-flex items-center gap-1 px-2 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                    Clear
+                  </button>
+                )}
+
+                {/* Search */}
+                <div className="relative">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search tasks..."
+                    value={filters.search}
+                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    className="w-48 pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Empty State Content */}
+            <div className="p-6">
+              <TaskEmptyState
+                hasNoTasks={tasks.length === 0}
+                onResetFilters={resetFilters}
+              />
+            </div>
+          </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Controls Panel */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-gray-200">
+              {/* Left side - View toggle and filters */}
+              <div className="flex items-center gap-3">
+                {/* View Toggle */}
+                <div className="inline-flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setView('list')}
+                    className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      view === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                    title="List View"
+                  >
+                    <ListBulletIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setView('board')}
+                    className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      view === 'board' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                    title="Board View"
+                  >
+                    <Squares2X2Icon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setView('compact')}
+                    className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      view === 'compact' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                    title="Compact View"
+                  >
+                    <TableCellsIcon className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div className="h-6 w-px bg-gray-300"></div>
+
+                {/* Filters */}
+                <select
+                  value={filters.project}
+                  onChange={(e) => handleFilterChange('project', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Status</option>
+                  <option value="not-started">Not Started</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="review">In Review</option>
+                  <option value="on-hold">On Hold</option>
+                  <option value="completed">Completed</option>
+                </select>
+
+                <select
+                  value={filters.priority}
+                  onChange={(e) => handleFilterChange('priority', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Priority</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+
+                <select
+                  value={filters.dueDate}
+                  onChange={(e) => handleFilterChange('dueDate', e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">All Due Dates</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="today">Due Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                </select>
+
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="dueDate">Sort: Due Date</option>
+                  <option value="priority">Sort: Priority</option>
+                  <option value="created">Sort: Created</option>
+                  <option value="title">Sort: Title</option>
+                </select>
+
+                {/* Show Completed Toggle */}
+                <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showCompleted}
+                    onChange={(e) => setShowCompleted(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                  Show Completed
+                </label>
+              </div>
+
+              {/* Right side - Search and clear filters */}
+              <div className="flex items-center gap-3">
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={resetFilters}
+                    className="inline-flex items-center gap-1 px-2 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                    Clear
+                  </button>
+                )}
+
+                {/* Search */}
+                <div className="relative">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search tasks..."
+                    value={filters.search}
+                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    className="w-48 pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Task Content */}
             {view === 'list' && (
               <TaskList
                 tasks={filteredAndSortedTasks}
-                selectedTasks={selectedTasks}
-                onTaskSelection={handleTaskSelection}
               />
             )}
 
@@ -401,8 +760,6 @@ const MyTasks = () => {
               <div className="p-6">
                 <TaskBoard
                   tasksByStatus={tasksByStatus}
-                  selectedTasks={selectedTasks}
-                  onTaskSelection={handleTaskSelection}
                 />
               </div>
             )}
@@ -410,8 +767,6 @@ const MyTasks = () => {
             {view === 'compact' && (
               <TaskList
                 tasks={filteredAndSortedTasks}
-                selectedTasks={selectedTasks}
-                onTaskSelection={handleTaskSelection}
                 variant="compact"
               />
             )}

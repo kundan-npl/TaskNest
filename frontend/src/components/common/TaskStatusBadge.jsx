@@ -21,6 +21,12 @@ const TaskStatusBadge = ({ status, size = 'sm', className = '' }) => {
           text: 'text-gray-800',
           label: 'Not Started'
         };
+      case 'review':
+        return {
+          bg: 'bg-orange-100',
+          text: 'text-orange-800',
+          label: 'In Review'
+        };
       case 'on-hold':
         return {
           bg: 'bg-yellow-100',

@@ -173,12 +173,19 @@ const TaskDetails = () => {
     try {
       setStatusUpdating(true);
       
-      // In a real implementation, we would call the API
-      // await taskService.updateTaskStatus(id, newStatus);
+      // Call the API to update task status
+      await taskService.updateTask(task.projectId, idFromParams, { status: newStatus });
       
       // Update local state
       setTask({ ...task, status: newStatus });
       toast.success('Task status updated successfully');
+      
+      // Emit event for real-time updates
+      if (window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('task_status_changed', {
+          detail: { task: { ...task, status: newStatus } }
+        }));
+      }
     } catch (error) {
       toast.error(error.message || 'Failed to update task status');
     } finally {
@@ -188,7 +195,7 @@ const TaskDetails = () => {
 
   const handleDeleteTask = async () => {
     try {
-      // await taskService.deleteTask(id);
+      await taskService.deleteTask(task.projectId, idFromParams);
       toast.success('Task deleted successfully');
       navigate(`/projects/${task.projectId}`);
     } catch (error) {
@@ -353,7 +360,7 @@ const TaskDetails = () => {
                 to={`/tasks/${idFromParams}/edit`}
                 className="btn-secondary"
               >
-                Edit Task
+                Update Task
               </Link>
               {confirmDelete ? (
                 <>
@@ -394,59 +401,71 @@ const TaskDetails = () => {
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="font-medium text-gray-700">Status:</span>
                 {renderTaskStatus(task.status)}
+                
+                {/* Compact Status Update Controls */}
+                {hasRole(['admin', 'user']) && (
+                  <div className="flex items-center gap-1 ml-2">
+                    <span className="text-xs text-gray-500 mr-1">Quick update:</span>
+                    <button
+                      disabled={task.status === 'todo' || statusUpdating}
+                      onClick={() => handleStatusChange('todo')}
+                      className={`px-2 py-1 text-xs font-medium rounded transition-all duration-200 ${
+                        task.status === 'todo'
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      title="Mark as To Do"
+                    >
+                      To Do
+                    </button>
+                    <button
+                      disabled={task.status === 'in-progress' || statusUpdating}
+                      onClick={() => handleStatusChange('in-progress')}
+                      className={`px-2 py-1 text-xs font-medium rounded transition-all duration-200 ${
+                        task.status === 'in-progress'
+                          ? 'bg-blue-200 text-blue-400 cursor-not-allowed'
+                          : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                      }`}
+                      title="Mark as In Progress"
+                    >
+                      In Progress
+                    </button>
+                    <button
+                      disabled={task.status === 'review' || statusUpdating}
+                      onClick={() => handleStatusChange('review')}
+                      className={`px-2 py-1 text-xs font-medium rounded transition-all duration-200 ${
+                        task.status === 'review'
+                          ? 'bg-orange-200 text-orange-400 cursor-not-allowed'
+                          : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                      }`}
+                      title="Mark as In Review"
+                    >
+                      Review
+                    </button>
+                    <button
+                      disabled={task.status === 'done' || statusUpdating}
+                      onClick={() => handleStatusChange('done')}
+                      className={`px-2 py-1 text-xs font-medium rounded transition-all duration-200 ${
+                        task.status === 'done'
+                          ? 'bg-green-200 text-green-400 cursor-not-allowed'
+                          : 'bg-green-100 text-green-600 hover:bg-green-200'
+                      }`}
+                      title="Mark as Done"
+                    >
+                      Done
+                    </button>
+                    {statusUpdating && (
+                      <div className="flex items-center gap-1 ml-2">
+                        <div className="animate-spin rounded-full h-3 w-3 border border-blue-300 border-t-blue-600"></div>
+                        <span className="text-xs text-blue-600">Updating...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              
-              {hasRole(['admin', 'user']) && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    disabled={task.status === 'not-started' || statusUpdating}
-                    onClick={() => handleStatusChange('not-started')}
-                    className={`px-3 py-1 text-sm rounded transition-colors ${
-                      task.status === 'not-started'
-                        ? 'bg-gray-200 text-gray-800'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Not Started
-                  </button>
-                  <button
-                    disabled={task.status === 'in-progress' || statusUpdating}
-                    onClick={() => handleStatusChange('in-progress')}
-                    className={`px-3 py-1 text-sm rounded transition-colors ${
-                      task.status === 'in-progress'
-                        ? 'bg-blue-200 text-blue-800'
-                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                    }`}
-                  >
-                    In Progress
-                  </button>
-                  <button
-                    disabled={task.status === 'completed' || statusUpdating}
-                    onClick={() => handleStatusChange('completed')}
-                    className={`px-3 py-1 text-sm rounded transition-colors ${
-                      task.status === 'completed'
-                        ? 'bg-green-200 text-green-800'
-                        : 'bg-green-100 text-green-700 hover:bg-green-200'
-                    }`}
-                  >
-                    Completed
-                  </button>
-                  <button
-                    disabled={task.status === 'on-hold' || statusUpdating}
-                    onClick={() => handleStatusChange('on-hold')}
-                    className={`px-3 py-1 text-sm rounded transition-colors ${
-                      task.status === 'on-hold'
-                        ? 'bg-yellow-200 text-yellow-800'
-                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                    }`}
-                  >
-                    On Hold
-                  </button>
-                </div>
-              )}
             </div>
             
             <div className="flex flex-wrap gap-4 mb-6">
@@ -479,16 +498,21 @@ const TaskDetails = () => {
               
               <div className="bg-gray-50 px-4 py-3 rounded-md">
                 <div className="text-xs text-gray-500">Assigned To</div>
-                <div className="mt-1 text-sm font-medium flex items-center">
-                  {task.assignedTo ? (
-                    <>
-                      <img 
-                        src={task.assignedTo.avatar}
-                        alt={task.assignedTo.name}
-                        className="w-5 h-5 rounded-full mr-2"
-                      />
-                      {task.assignedTo.name}
-                    </>
+                <div className="mt-1 text-sm font-medium">
+                  {task.assignedTo && Array.isArray(task.assignedTo) && task.assignedTo.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {task.assignedTo.map((user, index) => (
+                        <div key={user._id || index} className="flex items-center">
+                          <img 
+                            src={user.avatar || `https://i.pravatar.cc/150?img=${index + 1}`}
+                            alt={user.name}
+                            className="w-5 h-5 rounded-full mr-2"
+                          />
+                          <span>{user.name}</span>
+                          {index < task.assignedTo.length - 1 && <span className="ml-1 text-gray-400">,</span>}
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <span className="text-gray-500">Unassigned</span>
                   )}
@@ -739,7 +763,10 @@ const TaskDetails = () => {
                     <h4 className="text-sm font-medium text-gray-900">Task Assigned</h4>
                     <p className="text-xs text-gray-500">{new Date(task.createdAt).toLocaleString()}</p>
                     <p className="text-sm text-gray-600 mt-1">
-                      Assigned to {task.assignedTo?.name || 'Unassigned'}
+                      {task.assignedTo && Array.isArray(task.assignedTo) && task.assignedTo.length > 0 
+                        ? `Assigned to ${task.assignedTo.map(user => user.name).join(', ')}`
+                        : 'Unassigned'
+                      }
                     </p>
                   </div>
                 </div>

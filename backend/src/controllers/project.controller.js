@@ -31,15 +31,33 @@ exports.getProjects = async (req, res, next) => {
     .populate('createdBy', 'name email')
     .sort({ createdAt: -1 });
 
-    // Add user's role information to each project
-    const projectsWithRoles = projects.map(project => {
+    // Import Task model for task counts
+    const Task = require('../models/task.model');
+
+    // Add user's role information and task counts to each project
+    const projectsWithRoles = await Promise.all(projects.map(async (project) => {
       const userMember = getUserProjectRole(project, req.user.id);
+      
+      // Get task counts for this project
+      const [totalTasks, completedTasks] = await Promise.all([
+        Task.countDocuments({ project: project._id }),
+        Task.countDocuments({ project: project._id, status: { $in: ['completed', 'done'] } })
+      ]);
+
+      // Calculate progress percentage based on task completion
+      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
       return {
         ...project.toObject(),
         userRole: userMember?.role || null,
-        userPermissions: userMember ? Object.keys(userMember.permissions).filter(key => userMember.permissions[key]) : []
+        userPermissions: userMember ? Object.keys(userMember.permissions).filter(key => userMember.permissions[key]) : [],
+        tasks: {
+          total: totalTasks,
+          completed: completedTasks
+        },
+        progress: progress // Add real-time calculated progress
       };
-    });
+    }));
     
     res.status(200).json({
       success: true,
@@ -86,11 +104,24 @@ exports.getProject = async (req, res, next) => {
       });
     }
 
+    // Calculate progress based on task completion
+    const Task = require('../models/task.model');
+    const [totalTasks, completedTasks] = await Promise.all([
+      Task.countDocuments({ project: project._id }),
+      Task.countDocuments({ project: project._id, status: { $in: ['completed', 'done'] } })
+    ]);
+    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
     // Add user's role and permissions to response
     const projectData = {
       ...project.toObject(),
       userRole: userMember.role,
-      userPermissions: Object.keys(userMember.permissions).filter(key => userMember.permissions[key])
+      userPermissions: Object.keys(userMember.permissions).filter(key => userMember.permissions[key]),
+      tasks: {
+        total: totalTasks,
+        completed: completedTasks
+      },
+      progress: progress // Add real-time calculated progress
     };
 
     res.status(200).json({
