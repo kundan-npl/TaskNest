@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import projectService from '../../../services/projectService';
+import invitationService from '../../../services/invitationService';
 import { useSocket } from '../../../context/SocketContext';
-import InviteByEmail from '../InviteByEmail';
+import SendInvitationModal from '../SendInvitationModal';
+import InvitationManagerWidget from '../InvitationManagerWidget';
 
 const TeamManagementWidget = ({ 
   members = [], 
@@ -16,10 +18,9 @@ const TeamManagementWidget = ({
   className 
 }) => {
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState('team-member');
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [selectedRole, setSelectedRole] = useState('team-member');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [bulkActionMode, setBulkActionMode] = useState(false);
@@ -31,7 +32,6 @@ const TeamManagementWidget = ({
   const [teamMembers, setTeamMembers] = useState(members);
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
-  const [inviteEmails, setInviteEmails] = useState([]);
 
   const { socket, isConnected, onlineUsers } = useSocket();
 
@@ -110,7 +110,7 @@ const TeamManagementWidget = ({
     
     try {
       setLoadingInvitations(true);
-      const response = await projectService.getPendingInvitations(project._id);
+      const response = await invitationService.getProjectInvitations(project._id);
       setPendingInvitations(response.data || []);
     } catch (error) {
       console.error('Failed to load pending invitations:', error);
@@ -138,43 +138,6 @@ const TeamManagementWidget = ({
     member.user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     member.role?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleInviteMember = async () => {
-    if (!inviteEmail.trim()) {
-      toast.error('Please enter an email address');
-      return;
-    }
-
-    if (!project?._id) {
-      toast.error('Project not found');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await projectService.inviteMember(project._id, {
-        email: inviteEmail,
-        role: selectedRole
-      });
-
-      if (response.success) {
-        toast.success('Invitation sent successfully');
-        onMemberAdd?.(response.member);
-        setShowInviteModal(false);
-        setInviteEmail('');
-        setSelectedRole('team-member');
-        loadTeamStats(); // Refresh stats
-        loadPendingInvitations(); // Refresh pending invitations
-      } else {
-        toast.error(response.message || 'Failed to send invitation');
-      }
-    } catch (error) {
-      console.error('Failed to invite member:', error);
-      toast.error(error.response?.data?.message || 'Failed to invite member');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleRoleChangeSubmit = async () => {
     if (!selectedMember || !project?._id) return;
@@ -293,17 +256,17 @@ const TeamManagementWidget = ({
     if (window.confirm('Are you sure you want to cancel this invitation?')) {
       try {
         setLoadingInvitations(true);
-        const response = await projectService.cancelInvitation(project._id, token);
+        const response = await invitationService.cancelInvitation(token);
         
         if (response.success) {
           toast.success('Invitation cancelled successfully');
           loadPendingInvitations(); // Refresh pending invitations
         } else {
-          toast.error(response.message || 'Failed to cancel invitation');
+          toast.error(response.error || 'Failed to cancel invitation');
         }
       } catch (error) {
         console.error('Failed to cancel invitation:', error);
-        toast.error(error.response?.data?.message || 'Failed to cancel invitation');
+        toast.error(error.message || 'Failed to cancel invitation');
       } finally {
         setLoadingInvitations(false);
       }
@@ -337,6 +300,13 @@ const TeamManagementWidget = ({
   const openMemberDetails = (member) => {
     setSelectedMemberDetails(member);
     setShowMemberDetails(true);
+  };
+
+  const handleInvitationSent = (invitation) => {
+    // Refresh pending invitations and team stats when a new invitation is sent
+    loadPendingInvitations();
+    loadTeamStats();
+    toast.success('Invitation sent successfully');
   };
 
   const getMemberContribution = (member) => {
@@ -500,53 +470,6 @@ const TeamManagementWidget = ({
 
       {/* Team Members List */}
       <div className="space-y-3 max-h-96 overflow-y-auto">
-        {/* Pending Invitations Section */}
-        {pendingInvitations.length > 0 && permissions?.canManageMembers && (
-          <div className="mb-4">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Pending Invitations ({pendingInvitations.length})
-            </h4>
-            <div className="space-y-2">
-              {pendingInvitations.map((invitation) => (
-                <div 
-                  key={invitation._id || invitation.token}
-                  className="flex items-center justify-between p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 opacity-60"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                      <svg className="h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">{invitation.email}</div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        Invited {invitation.invitedAt ? new Date(invitation.invitedAt).toLocaleDateString() : 'recently'} • 
-                        Role: {roleLabels[invitation.role] || invitation.role}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
-                      Pending
-                    </span>
-                    {permissions?.canManageMembers && (
-                      <button
-                        onClick={() => handleCancelInvitation(invitation.token)}
-                        className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm"
-                        title="Cancel invitation"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {filteredMembers.length === 0 ? (
           <div className="text-center py-8">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -653,55 +576,23 @@ const TeamManagementWidget = ({
         )}
       </div>
 
-      {/* Invite Member Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative">
-            <button
-              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"
-              onClick={() => setShowInviteModal(false)}
-            >
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <h3 className="text-lg font-semibold mb-4">Invite by Email</h3>
-            <InviteByEmail inviteEmails={inviteEmails} setInviteEmails={setInviteEmails} availableUsers={teamMembers.map(m => m.user)} />
-            <div className="mt-4 flex justify-end space-x-2">
-              <button
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                onClick={() => setShowInviteModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                disabled={loading || inviteEmails.length === 0}
-                onClick={async () => {
-                  setLoading(true);
-                  for (const invite of inviteEmails) {
-                    try {
-                      await projectService.inviteMember(project._id, {
-                        email: invite.email,
-                        role: invite.role
-                      });
-                      toast.success(`Invitation sent to ${invite.email}`);
-                    } catch (err) {
-                      toast.error(`Failed to invite ${invite.email}: ${err.message}`);
-                    }
-                  }
-                  setInviteEmails([]);
-                  setShowInviteModal(false);
-                  setLoading(false);
-                  loadPendingInvitations();
-                }}
-              >
-                Send Invites
-              </button>
-            </div>
-          </div>
+      {/* Pending Invitations Management */}
+      {permissions?.canManageMembers && (
+        <div className="mt-6">
+          <InvitationManagerWidget
+            projectId={project?._id}
+            onInvitationUpdate={loadPendingInvitations}
+          />
         </div>
       )}
+
+      {/* Send Invitation Modal */}
+      <SendInvitationModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        projectId={project?._id}
+        onInvitationSent={handleInvitationSent}
+      />
 
       {/* Role Change Modal */}
       {showRoleModal && selectedMember && (

@@ -84,7 +84,7 @@ class EmailService {
   // Send project invitation email
   async sendProjectInvitation({ email, projectName, inviterName, inviteToken, projectId }) {
     const subject = `You're invited to join "${projectName}" on TaskNest`;
-    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/accept-invitation/${inviteToken}?project=${projectId}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/invite?token=${inviteToken}`;
     
     const html = this.generateInvitationTemplate({
       projectName,

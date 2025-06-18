@@ -114,6 +114,7 @@ const notificationRoutes = require('./src/routes/notification.routes');
 const discussionRoutes = require('./src/routes/discussion.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
 const googleDriveRoutes = require('./src/routes/googleDrive.routes');
+const invitationRoutes = require('./src/routes/invitation.routes');
 
 // Mount routers
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -124,6 +125,7 @@ app.use(`${API_PREFIX}/files`, fileRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/discussions`, discussionRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
+app.use(`${API_PREFIX}/invite`, invitationRoutes);
 app.use(`${API_PREFIX}`, googleDriveRoutes);
 
 // Health check route

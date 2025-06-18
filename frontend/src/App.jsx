@@ -16,6 +16,7 @@ import Register from './pages/auth/Register.jsx';
 import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 import ResetPassword from './pages/auth/ResetPassword.jsx';
 import AcceptInvitation from './pages/auth/AcceptInvitation.jsx';
+import InvitePage from './pages/auth/InvitePage.jsx';
 import EmailSent from './pages/auth/EmailSent.jsx';
 
 // Protected route component
@@ -92,6 +93,9 @@ function App() {
 
           {/* Public invitation acceptance route */}
           <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
+          
+          {/* New streamlined invitation route */}
+          <Route path="/invite" element={<InvitePage />} />
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
