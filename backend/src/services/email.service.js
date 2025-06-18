@@ -135,6 +135,23 @@ class EmailService {
     });
   }
 
+  // Send welcome email for new user registration
+  async sendWelcomeEmail({ email, userName, accountType }) {
+    const subject = 'Welcome to TaskNest - Your Project Management Journey Begins!';
+    
+    const html = this.generateWelcomeTemplate({
+      userName,
+      email,
+      accountType: accountType || 'user'
+    });
+
+    return await this.sendEmail({
+      to: email,
+      subject,
+      html
+    });
+  }
+
   // Generate project invitation email template
   generateInvitationTemplate({ projectName, inviterName, inviteLink, email }) {
     return `
@@ -277,6 +294,84 @@ class EmailService {
             <div class="footer">
                 <p>© 2025 TaskNest. All rights reserved.</p>
                 <p>This email was sent to ${email}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+  }
+
+  // Generate welcome email template
+  generateWelcomeTemplate({ userName, email, accountType }) {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to TaskNest</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; }
+            .welcome-box { background: white; padding: 25px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .button { display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 25px; margin: 20px 0; font-weight: bold; }
+            .button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+            .footer { background: #f1f1f1; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }
+            .logo { font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+            .feature-list { list-style: none; padding: 0; }
+            .feature-list li { padding: 8px 0; }
+            .feature-list li:before { content: "✓"; color: #4CAF50; font-weight: bold; margin-right: 10px; }
+            .highlight { color: #667eea; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">🎯 TaskNest</div>
+                <h1>Welcome to Your Project Management Hub!</h1>
+                <p>Your journey to better project management starts here</p>
+            </div>
+            <div class="content">
+                <div class="welcome-box">
+                    <h2>Hi ${userName || 'there'}! 👋</h2>
+                    <p>Congratulations on joining TaskNest! We're excited to help you and your team achieve more together.</p>
+                    
+                    <p>Your account has been created as a <span class="highlight">${accountType}</span>, and you now have access to:</p>
+                    
+                    <ul class="feature-list">
+                        <li><strong>Project Management:</strong> Create and organize projects with ease</li>
+                        <li><strong>Team Collaboration:</strong> Invite team members and work together</li>
+                        <li><strong>Task Tracking:</strong> Monitor progress and stay on schedule</li>
+                        <li><strong>Real-time Updates:</strong> Get notified about important changes</li>
+                        <li><strong>Reporting & Analytics:</strong> Track your team's productivity</li>
+                    </ul>
+                </div>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard" class="button">Get Started Now</a>
+                </div>
+                
+                <div class="welcome-box">
+                    <h3>🚀 Quick Start Tips:</h3>
+                    <ol>
+                        <li><strong>Complete your profile</strong> - Add your details and profile picture</li>
+                        <li><strong>Create your first project</strong> - Start organizing your work</li>
+                        <li><strong>Invite your team</strong> - Collaboration makes everything better</li>
+                        <li><strong>Set up notifications</strong> - Stay informed about what matters</li>
+                    </ol>
+                </div>
+                
+                <p>Need help getting started? Check out our <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/help" style="color: #667eea;">Getting Started Guide</a> or contact our support team.</p>
+                
+                <p>We're here to help you succeed!</p>
+                <p><strong>The TaskNest Team</strong></p>
+            </div>
+            <div class="footer">
+                <p>© 2025 TaskNest. All rights reserved.</p>
+                <p>This email was sent to ${email}</p>
+                <p>You can update your email preferences in your account settings.</p>
             </div>
         </div>
     </body>
