@@ -13,18 +13,18 @@ const generateActivityFeed = async (userId, limit = 10) => {
     // Get recent tasks and projects for the user
     const recentTasks = await Task.find({
       $or: [
-        { assignedTo: userId },
+        { 'assignedTo.user': userId },
         { createdBy: userId }
       ]
     })
     .sort({ updatedAt: -1 })
     .limit(limit)
-    .populate('assignedTo', 'name')
-    .populate('project', 'name')
+    .populate('assignedTo.user', 'name')
+    .populate('project', 'name title')
     .populate('createdBy', 'name');
 
     const recentProjects = await Project.find({
-      'members.userId': userId
+      'members.user': userId
     })
     .sort({ updatedAt: -1 })
     .limit(5);
@@ -36,7 +36,7 @@ const generateActivityFeed = async (userId, limit = 10) => {
       let message = '';
       let type = '';
       
-      if (task.status === 'completed') {
+      if (task.status === 'done') {
         message = `Task "${task.title}" was completed`;
         type = 'task_completed';
       } else if (task.status === 'in-progress') {
@@ -47,13 +47,21 @@ const generateActivityFeed = async (userId, limit = 10) => {
         type = 'task_updated';
       }
 
+      // Find the user who made the change (prefer assignee, fallback to creator)
+      let activityUser = null;
+      if (task.assignedTo && task.assignedTo.length > 0) {
+        activityUser = task.assignedTo[0].user;
+      } else if (task.createdBy) {
+        activityUser = task.createdBy;
+      }
+
       activities.push({
         id: task._id,
         type,
         message,
         timestamp: task.updatedAt,
-        user: task.assignedTo || task.createdBy,
-        projectName: task.project?.name
+        user: activityUser,
+        projectName: task.project ? (task.project.name || task.project.title) : null
       });
     });
 
@@ -62,10 +70,10 @@ const generateActivityFeed = async (userId, limit = 10) => {
       activities.push({
         id: project._id,
         type: 'project_updated',
-        message: `Project "${project.name}" was updated`,
+        message: `Project "${project.title}" was updated`, // Use 'title' field
         timestamp: project.updatedAt,
         user: project.createdBy,
-        projectName: project.name
+        projectName: project.title // Use 'title' field
       });
     });
 
@@ -174,25 +182,54 @@ exports.getDashboardStats = asyncHandler(async (req, res, next) => {
         { createdBy: userId },
         { 'members.user': userId }
       ]
-    }).select('_id name status priority dueDate createdAt members tasks');
+    }).select('_id title status priorityLevel deadline createdAt members');
     console.log('Found projects:', userProjects.length);
 
     const projectIds = userProjects.map(p => p._id);
     console.log('Project IDs:', projectIds);
 
-    // Get user's tasks
+    // Get user's tasks - Only tasks specifically assigned to the user or created by them
     console.log('Querying tasks...');
     const userTasks = await Task.find({
       $or: [
         { 'assignedTo.user': userId },
-        { project: { $in: projectIds } }
+        { createdBy: userId }
       ]
-    }).populate('project', 'name').populate('assignedTo.user', 'name email');
+    })
+    .populate('project', 'name title')
+    .populate('assignedTo.user', 'name email')
+    .populate('createdBy', 'name email');
+    
     console.log('Found tasks:', userTasks.length);
+    console.log('Sample task with project:', userTasks[0] ? {
+      title: userTasks[0].title,
+      project: userTasks[0].project,
+      assignedTo: userTasks[0].assignedTo
+    } : 'No tasks');
+
+    // Also get tasks from user's projects that are not assigned to anyone (for project managers/supervisors)
+    const unassignedProjectTasks = await Task.find({
+      project: { $in: projectIds },
+      $or: [
+        { assignedTo: { $exists: false } },
+        { assignedTo: { $size: 0 } }
+      ],
+      createdBy: { $ne: userId } // Don't duplicate user's own tasks
+    })
+    .populate('project', 'name title')
+    .populate('createdBy', 'name email');
+    
+    // Combine and deduplicate tasks
+    const allUserTasks = [...userTasks, ...unassignedProjectTasks].reduce((acc, task) => {
+      if (!acc.find(t => t._id.toString() === task._id.toString())) {
+        acc.push(task);
+      }
+      return acc;
+    }, []);
 
     // Calculate statistics
     console.log('Calculating task statistics...');
-    console.log('Sample task:', JSON.stringify(userTasks[0], null, 2));
+    console.log('Sample task:', JSON.stringify(allUserTasks[0], null, 2));
     
     const stats = {
       projects: {
@@ -201,15 +238,15 @@ exports.getDashboardStats = asyncHandler(async (req, res, next) => {
         completed: userProjects.filter(p => p.status === 'completed').length,
         onHold: userProjects.filter(p => p.status === 'on-hold').length,
         overdue: userProjects.filter(p => 
-          p.dueDate && new Date(p.dueDate) < new Date() && p.status !== 'completed'
+          p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed'
         ).length
       },
       tasks: {
-        total: userTasks.length,
+        total: allUserTasks.length,
         assigned: (() => {
           console.log('Calculating assigned tasks...');
           try {
-            const assignedTasks = userTasks.filter(t => {
+            const assignedTasks = allUserTasks.filter(t => {
               console.log('Task assignedTo:', t.assignedTo);
               return t.assignedTo && t.assignedTo.some(assignment => 
                 assignment.user && assignment.user._id && assignment.user._id.toString() === userId.toString()
@@ -221,18 +258,20 @@ exports.getDashboardStats = asyncHandler(async (req, res, next) => {
             return 0;
           }
         })(),
-        completed: userTasks.filter(t => t.status === 'completed').length,
-        inProgress: userTasks.filter(t => t.status === 'in-progress').length,
-        todo: userTasks.filter(t => t.status === 'todo').length,
-        overdue: userTasks.filter(t => 
-          t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'completed'
+        completed: allUserTasks.filter(t => t.status === 'done').length,
+        inProgress: allUserTasks.filter(t => t.status === 'in-progress').length,
+        review: allUserTasks.filter(t => t.status === 'review').length,
+        todo: allUserTasks.filter(t => t.status === 'todo').length,
+        cancelled: allUserTasks.filter(t => t.status === 'cancelled').length,
+        overdue: allUserTasks.filter(t => 
+          t.dueDate && new Date(t.dueDate) < new Date() && !['done', 'cancelled'].includes(t.status)
         ).length,
-        upcoming: userTasks.filter(t => {
+        upcoming: allUserTasks.filter(t => {
           if (!t.dueDate) return false;
           const dueDate = new Date(t.dueDate);
           const today = new Date();
           const threeDaysFromNow = new Date(today.getTime() + (3 * 24 * 60 * 60 * 1000));
-          return dueDate >= today && dueDate <= threeDaysFromNow && t.status !== 'completed';
+          return dueDate >= today && dueDate <= threeDaysFromNow && !['done', 'cancelled'].includes(t.status);
         }).length
       },
       recentProjects: await Promise.all(
@@ -243,22 +282,22 @@ exports.getDashboardStats = asyncHandler(async (req, res, next) => {
             // Calculate progress based on actual task completion
             const [totalTasks, completedTasks] = await Promise.all([
               Task.countDocuments({ project: p._id }),
-              Task.countDocuments({ project: p._id, status: { $in: ['completed', 'done'] } })
+              Task.countDocuments({ project: p._id, status: 'done' })
             ]);
             const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
             
             return {
               _id: p._id,
-              name: p.name,
+              name: p.title, // Use 'title' field from Project model
               status: p.status,
-              priority: p.priority,
-              dueDate: p.dueDate,
+              priority: p.priorityLevel, // Use 'priorityLevel' field from Project model
+              dueDate: p.deadline, // Use 'deadline' field from Project model
               progress: progress,
               memberCount: p.members?.length || 0
             };
           })
       ),
-      recentTasks: userTasks
+      recentTasks: allUserTasks
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 10)
         .map(t => ({
@@ -267,11 +306,20 @@ exports.getDashboardStats = asyncHandler(async (req, res, next) => {
           status: t.status,
           priority: t.priority,
           dueDate: t.dueDate,
-          project: t.project ? { _id: t.project._id, name: t.project.name } : null,
-          assignedTo: t.assignedTo ? { 
-            _id: t.assignedTo._id, 
-            name: t.assignedTo.name, 
-            email: t.assignedTo.email 
+          project: t.project ? { 
+            _id: t.project._id, 
+            name: t.project.name || t.project.title 
+          } : null,
+          assignedTo: t.assignedTo && t.assignedTo.length > 0 ? 
+            t.assignedTo.map(a => ({
+              _id: a.user._id,
+              name: a.user.name,
+              email: a.user.email
+            })) : null,
+          createdBy: t.createdBy ? {
+            _id: t.createdBy._id,
+            name: t.createdBy.name,
+            email: t.createdBy.email
           } : null
         }))
     };
@@ -325,8 +373,9 @@ exports.getUserDashboard = asyncHandler(async (req, res, next) => {
   // Get user's tasks with project information
   const userTasks = await Task.find({
     'assignedTo.user': userObjectId
-  }).populate('project', 'name status')
+  }).populate('project', 'name title status')
     .populate('assignedTo.user', 'name email profileImage')
+    .populate('createdBy', 'name email profileImage')
     .sort({ createdAt: -1 });
 
   // Get activity feed for user
@@ -345,12 +394,12 @@ exports.getUserDashboard = asyncHandler(async (req, res, next) => {
     },
     projects: userProjects.map(p => ({
       _id: p._id,
-      name: p.name,
+      name: p.title, // Use 'title' field
       description: p.description,
       status: p.status,
-      priority: p.priority,
+      priority: p.priorityLevel, // Use 'priorityLevel' field
       progress: p.progress || 0,
-      dueDate: p.dueDate,
+      dueDate: p.deadline, // Use 'deadline' field
       createdAt: p.createdAt,
       manager: p.createdBy,
       memberCount: p.members?.length || 0,
@@ -362,7 +411,7 @@ exports.getUserDashboard = asyncHandler(async (req, res, next) => {
       completedTasksThisWeek: userTasks.filter(t => {
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
-        return t.status === 'completed' && new Date(t.updatedAt) >= weekAgo;
+        return t.status === 'done' && new Date(t.updatedAt) >= weekAgo;
       }).length,
       averageTaskCompletion: calculateAverageTaskCompletion(userTasks),
       projectParticipation: userProjects.length
@@ -402,7 +451,7 @@ exports.getDashboardUpdates = asyncHandler(async (req, res, next) => {
       },
       { updatedAt: { $gte: sinceDate } }
     ]
-  }).select('_id name status progress updatedAt');
+  }).select('_id title status progress updatedAt');
 
   // Get updated tasks
   const updatedTasks = await Task.find({
@@ -514,7 +563,7 @@ async function getNotificationsSince(userId, sinceDate) {
 }
 
 function calculateAverageTaskCompletion(tasks) {
-  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const completedTasks = tasks.filter(t => t.status === 'done');
   if (completedTasks.length === 0) return 0;
 
   const totalDays = completedTasks.reduce((sum, task) => {
@@ -533,7 +582,7 @@ async function calculatePerformanceMetrics(userId, startDate, endDate) {
     updatedAt: { $gte: startDate, $lte: endDate }
   });
 
-  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const completedTasks = tasks.filter(t => t.status === 'done');
   const onTimeTasks = completedTasks.filter(t => 
     !t.dueDate || new Date(t.updatedAt) <= new Date(t.dueDate)
   );
@@ -550,7 +599,7 @@ async function calculatePerformanceMetrics(userId, startDate, endDate) {
 
 function calculateProductivityScore(tasks) {
   // Simple productivity calculation based on completion rate and timeliness
-  const completed = tasks.filter(t => t.status === 'completed').length;
+  const completed = tasks.filter(t => t.status === 'done').length;
   const total = tasks.length;
   
   if (total === 0) return 0;
@@ -573,7 +622,7 @@ function calculateWeeklyProgress(tasks, startDate, endDate) {
     dayEnd.setHours(23, 59, 59, 999);
     
     const completedThatDay = tasks.filter(t => 
-      t.status === 'completed' && 
+      t.status === 'done' && 
       new Date(t.updatedAt) >= day && 
       new Date(t.updatedAt) <= dayEnd
     ).length;
@@ -614,7 +663,7 @@ async function getSystemActivity() {
   recentProjects.forEach(project => {
     activities.push({
       type: 'project_creation',
-      message: `Project "${project.name}" created by ${project.createdBy.name}`,
+      message: `Project "${project.title}" created by ${project.createdBy.name}`, // Use 'title' field
       timestamp: project.createdAt
     });
   });

@@ -38,6 +38,7 @@ const MyTasks = lazy(() => import('./pages/tasks/MyTasks.jsx'));
 const UserProfile = lazy(() => import('./pages/profile/UserProfile.jsx'));
 const Settings = lazy(() => import('./pages/settings/Settings.jsx'));
 const UserManagement = lazy(() => import('./pages/users/UserManagement.jsx'));
+const Reports = lazy(() => import('./pages/reports/Reports.jsx'));
 
 // Loading component for Suspense
 const LoadingSpinner = () => (
@@ -137,6 +138,16 @@ function App() {
             element={
               <RoleBasedRoute allowedRoles={['admin']}>
                 <UserManagement />
+              </RoleBasedRoute>
+            } 
+          />
+          
+          {/* Reports & Analytics */}
+          <Route 
+            path="/reports" 
+            element={
+              <RoleBasedRoute allowedRoles={['admin']}>
+                <Reports />
               </RoleBasedRoute>
             } 
           />

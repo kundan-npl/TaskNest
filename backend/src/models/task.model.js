@@ -83,7 +83,8 @@ const TaskSchema = new mongoose.Schema({
   project: {
     type: mongoose.Schema.ObjectId,
     ref: 'Project',
-    required: true
+    required: false, // Allow null for personal tasks
+    default: null
   },
   parentTask: {
     type: mongoose.Schema.ObjectId,

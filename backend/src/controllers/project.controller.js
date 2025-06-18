@@ -2,6 +2,8 @@ const Project = require('../models/project.model');
 const User = require('../models/user.model');
 const { notifyProjectMembers } = require('./notification.controller');
 const socketService = require('../services/socketService');
+// **NEW: Import Email Service**
+const EmailService = require('../services/email.service');
 
 /**
  * Helper function to check user's role in a project
@@ -41,7 +43,7 @@ exports.getProjects = async (req, res, next) => {
       // Get task counts for this project
       const [totalTasks, completedTasks] = await Promise.all([
         Task.countDocuments({ project: project._id }),
-        Task.countDocuments({ project: project._id, status: { $in: ['completed', 'done'] } })
+        Task.countDocuments({ project: project._id, status: 'done' })
       ]);
 
       // Calculate progress percentage based on task completion
@@ -108,7 +110,7 @@ exports.getProject = async (req, res, next) => {
     const Task = require('../models/task.model');
     const [totalTasks, completedTasks] = await Promise.all([
       Task.countDocuments({ project: project._id }),
-      Task.countDocuments({ project: project._id, status: { $in: ['completed', 'done'] } })
+      Task.countDocuments({ project: project._id, status: 'done' })
     ]);
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
@@ -213,6 +215,9 @@ exports.updateProject = async (req, res, next) => {
       });
     }
 
+    // Capture the previous status to detect completion
+    const previousStatus = project.status;
+
     const updatedProject = await Project.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -220,6 +225,66 @@ exports.updateProject = async (req, res, next) => {
     )
     .populate('members.user', 'name email department jobTitle')
     .populate('createdBy', 'name email');
+
+    // **NEW: Project Completion Email Integration**
+    // Check if project was just completed and send completion emails
+    if (req.body.status && 
+        req.body.status === 'completed' && 
+        previousStatus !== 'completed') {
+      
+      try {
+        const emailService = new EmailService();
+        await emailService.initialize();
+        
+        // Calculate project statistics for the email
+        const Task = require('../models/task.model');
+        const tasks = await Task.find({ project: updatedProject._id });
+        
+        const projectStats = {
+          totalTasks: tasks.length,
+          teamMembers: updatedProject.members.length,
+          duration: updatedProject.startDate && updatedProject.deadline ? 
+            Math.ceil((new Date(updatedProject.deadline) - new Date(updatedProject.startDate)) / (1000 * 60 * 60 * 24)) : 0
+        };
+        
+        // Send completion emails to project members
+        const emailRecipients = new Set();
+        
+        // Add project members
+        if (updatedProject.members && Array.isArray(updatedProject.members)) {
+          updatedProject.members.forEach(member => {
+            if (member.user && member.user.email) {
+              emailRecipients.add({
+                email: member.user.email,
+                name: member.user.name || 'Team Member'
+              });
+            }
+          });
+        }
+        
+        // Send project completion emails
+        const emailPromises = Array.from(emailRecipients).map(recipient => 
+          emailService.sendProjectCompletionEmail({
+            email: recipient.email,
+            userName: recipient.name,
+            projectName: updatedProject.title || updatedProject.name || 'Your Project',
+            completedBy: req.user.name || 'Project Administrator',
+            projectStats: projectStats,
+            projectId: updatedProject._id
+          }).catch(emailError => {
+            console.error('Failed to send project completion email to', recipient.email, ':', emailError);
+            // Don't fail the request if email fails
+          })
+        );
+        
+        await Promise.all(emailPromises);
+        console.log(`[ProjectCompletion] Sent ${emailPromises.length} project completion notification emails`);
+        
+      } catch (emailError) {
+        console.error('Project completion email integration failed:', emailError);
+        // Don't fail the project update if email fails
+      }
+    }
 
     // Emit real-time update for project update
     socketService.broadcastTaskUpdate(updatedProject._id, {
@@ -399,6 +464,52 @@ exports.addMember = async (req, res, next) => {
       // Don't fail the request if notification fails
     }
 
+    // **NEW: Team Member Added Email Integration**
+    try {
+      const emailService = new EmailService();
+      await emailService.initialize();
+      
+      // Send team member added emails to all project members (including the new member)
+      const emailRecipients = new Set();
+      
+      // Add all existing project members
+      if (project.members && Array.isArray(project.members)) {
+        project.members.forEach(member => {
+          if (member.user && member.user.email) {
+            emailRecipients.add({
+              email: member.user.email,
+              name: member.user.name || 'Team Member'
+            });
+          }
+        });
+      }
+      
+      // Get the new member's details
+      const newMemberName = userToAdd.name || userToAdd.email;
+      
+      // Send team member added emails
+      const emailPromises = Array.from(emailRecipients).map(recipient => 
+        emailService.sendTeamMemberAddedEmail({
+          email: recipient.email,
+          userName: recipient.name,
+          projectName: project.title || 'Your Project',
+          newMemberName: newMemberName,
+          addedBy: req.user.name || 'Project Administrator',
+          projectId: project._id
+        }).catch(emailError => {
+          console.error('Failed to send team member added email to', recipient.email, ':', emailError);
+          // Don't fail the request if email fails
+        })
+      );
+      
+      await Promise.all(emailPromises);
+      console.log(`[TeamMemberAdded] Sent ${emailPromises.length} team member notification emails`);
+      
+    } catch (emailError) {
+      console.error('Team member added email integration failed:', emailError);
+      // Don't fail the member addition if email fails
+    }
+
     res.status(200).json({
       success: true,
       data: project
@@ -520,6 +631,9 @@ exports.updateProjectStatus = async (req, res, next) => {
 
     const { status, priorityLevel, deadline, settings } = req.body;
 
+    // Capture the previous status to detect completion
+    const previousStatus = project.status;
+
     if (status) project.status = status;
     if (priorityLevel) project.priorityLevel = priorityLevel;
     if (deadline) project.deadline = deadline;
@@ -527,6 +641,66 @@ exports.updateProjectStatus = async (req, res, next) => {
 
     await project.save();
     await project.populate('members.user', 'name email');
+
+    // **NEW: Project Completion Email Integration**
+    // Check if project was just completed and send completion emails
+    if (status && 
+        status === 'completed' && 
+        previousStatus !== 'completed') {
+      
+      try {
+        const emailService = new EmailService();
+        await emailService.initialize();
+        
+        // Calculate project statistics for the email
+        const Task = require('../models/task.model');
+        const tasks = await Task.find({ project: project._id });
+        
+        const projectStats = {
+          totalTasks: tasks.length,
+          teamMembers: project.members.length,
+          duration: project.startDate && project.deadline ? 
+            Math.ceil((new Date(project.deadline) - new Date(project.startDate)) / (1000 * 60 * 60 * 24)) : 0
+        };
+        
+        // Send completion emails to project members
+        const emailRecipients = new Set();
+        
+        // Add project members
+        if (project.members && Array.isArray(project.members)) {
+          project.members.forEach(member => {
+            if (member.user && member.user.email) {
+              emailRecipients.add({
+                email: member.user.email,
+                name: member.user.name || 'Team Member'
+              });
+            }
+          });
+        }
+        
+        // Send project completion emails
+        const emailPromises = Array.from(emailRecipients).map(recipient => 
+          emailService.sendProjectCompletionEmail({
+            email: recipient.email,
+            userName: recipient.name,
+            projectName: project.title || project.name || 'Your Project',
+            completedBy: req.user.name || 'Project Administrator',
+            projectStats: projectStats,
+            projectId: project._id
+          }).catch(emailError => {
+            console.error('Failed to send project completion email to', recipient.email, ':', emailError);
+            // Don't fail the request if email fails
+          })
+        );
+        
+        await Promise.all(emailPromises);
+        console.log(`[ProjectCompletion] Sent ${emailPromises.length} project completion notification emails`);
+        
+      } catch (emailError) {
+        console.error('Project completion email integration failed:', emailError);
+        // Don't fail the project status update if email fails
+      }
+    }
 
     // Emit real-time update
     socketService.emitToProject(project._id, 'project:status_updated', {
@@ -852,7 +1026,7 @@ exports.getTeamStats = async (req, res, next) => {
     const teamStats = {
       totalMembers: project.members.length,
       totalActiveTasks: tasks.filter(t => t.status === 'in-progress').length,
-      completionRate: tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0,
+      completionRate: tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100) : 0,
       avgResponseTime: calculateAvgResponseTime(tasks),
       memberProductivity: calculateMemberProductivity(tasks, project.members),
       roleDistribution: calculateRoleDistribution(project.members),
@@ -881,7 +1055,7 @@ function calculateProjectHealth(project, tasks) {
   
   // Reduce health for overdue tasks
   const overdueTasks = tasks.filter(t => 
-    t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed'
+    t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done'
   );
   health -= (overdueTasks.length / tasks.length) * 30;
   
@@ -891,7 +1065,7 @@ function calculateProjectHealth(project, tasks) {
   else if (daysToDeadline < 7) health -= 10;
   
   // Factor in completion rate
-  const completionRate = tasks.length > 0 ? tasks.filter(t => t.status === 'completed').length / tasks.length : 1;
+  const completionRate = tasks.length > 0 ? tasks.filter(t => t.status === 'done').length / tasks.length : 1;
   if (completionRate < 0.5) health -= 15;
   
   return Math.max(0, Math.round(health));
@@ -913,7 +1087,7 @@ function calculateMemberContributions(tasks, members) {
     const memberTasks = tasks.filter(t => 
       (t.assignedTo && t.assignedTo.toString() === (member.user._id || member.user).toString())
     );
-    const completedTasks = memberTasks.filter(t => t.status === 'completed');
+    const completedTasks = memberTasks.filter(t => t.status === 'done');
     
     return {
       memberId: member.user._id || member.user,
@@ -927,7 +1101,7 @@ function calculateMemberContributions(tasks, members) {
 
 // Helper functions for team stats calculations
 function calculateAvgResponseTime(tasks) {
-  const completedTasks = tasks.filter(t => t.status === 'completed' && t.createdAt && t.updatedAt);
+  const completedTasks = tasks.filter(t => t.status === 'done' && t.createdAt && t.updatedAt);
   if (completedTasks.length === 0) return 0;
   
   const totalTime = completedTasks.reduce((acc, task) => {
@@ -946,7 +1120,7 @@ function calculateMemberProductivity(tasks, members) {
         (assignee.user._id || assignee.user).toString() === (member.user._id || member.user).toString()
       )
     );
-    const completedTasks = memberTasks.filter(t => t.status === 'completed');
+    const completedTasks = memberTasks.filter(t => t.status === 'done');
     
     return {
       memberId: member.user._id || member.user,
@@ -993,7 +1167,7 @@ function calculateTaskDistribution(tasks, members) {
       memberId: member.user._id || member.user,
       name: member.user.name,
       taskCount: memberTasks.length,
-      completedCount: memberTasks.filter(t => t.status === 'completed').length,
+      completedCount: memberTasks.filter(t => t.status === 'done').length,
       inProgressCount: memberTasks.filter(t => t.status === 'in-progress').length
     };
   });

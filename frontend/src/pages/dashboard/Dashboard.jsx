@@ -15,6 +15,11 @@ import ProjectStatusBadge from '../../components/common/ProjectStatusBadge.jsx';
 import TaskCard from '../../components/common/TaskCard.jsx';
 import StatsCard from '../../components/common/StatsCard.jsx';
 
+// Import enhanced admin components
+import AdminDashboardCards from '../../components/admin/AdminDashboardCards.jsx';
+import AdminActivityMonitor from '../../components/admin/AdminActivityMonitor.jsx';
+import AdminAnalytics from '../../components/admin/AdminAnalytics.jsx';
+
 // Import enhanced dashboard hooks
 import {
   useDashboardData,
@@ -188,28 +193,32 @@ const Dashboard = () => {
   return (
     <div className="container mx-auto px-4 py-4">
       {/* Header Section - More compact */}
-      <div className="mb-4">
+      <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-            <div className="flex items-center mt-1">
-              <p className="text-sm text-gray-600 mr-2">Welcome back, {currentUser?.name || 'User'}!</p>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize
-                ${(currentUser?.systemRole || currentUser?.role) === ROLES.ADMIN ? 'bg-purple-100 text-purple-800' : 
-                  'bg-green-100 text-green-800'}`}>
-                {(currentUser?.systemRole || currentUser?.role) === ROLES.ADMIN ? 'Admin' : 'User'}
-              </span>
+            <div className="flex items-center mt-2 space-x-4">
+              <div className="flex items-center space-x-2">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize
+                  ${(currentUser?.systemRole || currentUser?.role) === ROLES.ADMIN ? 'bg-purple-100 text-purple-800' : 
+                    'bg-green-100 text-green-800'}`}>
+                  {(currentUser?.systemRole || currentUser?.role) === ROLES.ADMIN ? 'Admin' : 'User'}
+                </span>
+                <span className="text-sm text-gray-500">•</span>
+                <span className="text-sm text-gray-600">Here's what's happening with your work</span>
+              </div>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            {/* Real-time Connection Status */}
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-xs text-gray-500">
-                {isConnected ? 'Live' : 'Disconnected'}
-              </span>
-            </div>
-            
+            {/* Real-time Connection Status - Admin only */}
+            {hasRole(['admin']) && (
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                <span className="text-xs text-gray-500">
+                  {isConnected ? 'Live Updates' : 'Disconnected'}
+                </span>
+              </div>
+            )}
             
             <div className="text-right">
               <div className="text-sm text-gray-500">
@@ -220,31 +229,36 @@ const Dashboard = () => {
                   day: 'numeric' 
                 })}
               </div>
+              {hasRole(['admin']) && lastUpdated && (
+                <div className="text-xs text-gray-400">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
       
-      {/* Compact Stats Overview */}
+      {/* Personal Stats Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatsCard
           title="My Projects"
-          value={dashboardStats?.projectCount || projects.length}
-          subtitle={`${dashboardStats?.activeProjects || projects.filter(p => p.status === 'active').length} Active`}
+          value={dashboardStats?.projects?.total || 0}
+          subtitle={`${dashboardStats?.projects?.active || 0} Active • ${dashboardStats?.projects?.completed || 0} Completed`}
           color="indigo"
           isLive={isConnected}
           isLoading={dashboardLoading}
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           }
         />
         
         <StatsCard
-          title="Tasks"
-          value={dashboardStats?.taskCount || taskStats.total}
-          subtitle={`${dashboardStats?.completedTasks || taskStats.completed} Completed`}
+          title="My Tasks"
+          value={dashboardStats?.tasks?.assigned || dashboardStats?.tasks?.total || 0}
+          subtitle={`${dashboardStats?.tasks?.completed || 0} Completed • ${dashboardStats?.tasks?.inProgress || 0} In Progress`}
           color="blue"
           isLive={isConnected}
           isLoading={dashboardLoading}
@@ -256,9 +270,9 @@ const Dashboard = () => {
         />
         
         <StatsCard
-          title="In Progress"
-          value={dashboardStats?.inProgressTasks || taskStats.inProgress}
-          subtitle="Active Tasks"
+          title="Active Tasks"
+          value={dashboardStats?.tasks?.inProgress || 0}
+          subtitle={`${dashboardStats?.tasks?.todo || 0} To Do • ${dashboardStats?.tasks?.upcoming || 0} Upcoming`}
           color="yellow"
           isLive={isConnected}
           isLoading={dashboardLoading}
@@ -270,11 +284,11 @@ const Dashboard = () => {
         />
         
         <StatsCard
-          title="Overdue"
-          value={dashboardStats?.overdueTasks || overdueTasks.length}
-          subtitle={dashboardStats?.overdueTasks > 0 || overdueTasks.length > 0 ? 'Need Attention' : 'All On Track'}
+          title="Overdue Tasks"
+          value={dashboardStats?.tasks?.overdue || 0}
+          subtitle={dashboardStats?.tasks?.overdue > 0 ? 'Need Immediate Attention' : 'All Tasks On Track'}
           color="red"
-          trend={dashboardStats?.overdueTasks > 0 || overdueTasks.length > 0 ? 'down' : 'up'}
+          trend={dashboardStats?.tasks?.overdue > 0 ? 'down' : 'up'}
           isLive={isConnected}
           isLoading={dashboardLoading}
           icon={
@@ -292,8 +306,20 @@ const Dashboard = () => {
           {/* Charts Row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white rounded-lg shadow-sm border p-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Task Status</h3>
-              <TaskStatusChart taskStats={taskStats} />
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">My Task Status</h3>
+              {dashboardStats ? (
+                <TaskStatusChart taskStats={{
+                  total: dashboardStats.tasks?.total || 0,
+                  completed: dashboardStats.tasks?.completed || 0,
+                  inProgress: dashboardStats.tasks?.inProgress || 0,
+                  todo: dashboardStats.tasks?.todo || 0,
+                  overdue: dashboardStats.tasks?.overdue || 0
+                }} />
+              ) : (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
+                </div>
+              )}
             </div>
             
             <div className="bg-white rounded-lg shadow-sm border p-4">
@@ -312,39 +338,80 @@ const Dashboard = () => {
             </div>
             
             <div className="space-y-3">
-              {projects.slice(0, 3).map((project) => (
-                <Link 
-                  key={project.id || project._id}
-                  to={`/projects/${project.id}`}
-                  className="block p-3 border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900">{project.name}</h4>
-                      <p className="text-sm text-gray-600 mt-1">{project.description}</p>
-                    </div>
-                    <div className="text-right ml-4">
-                      <ProjectStatusBadge status={project.status} />
-                      <div className="mt-1 flex items-center">
-                        <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
-                          <div 
-                            className="bg-primary-600 h-1.5 rounded-full" 
-                            style={{ width: `${project.progress}%` }}
-                          ></div>
+              {dashboardStats?.recentProjects?.length > 0 ? (
+                dashboardStats.recentProjects.slice(0, 3).map((project) => (
+                  <Link 
+                    key={project._id}
+                    to={`/projects/${project._id}`}
+                    className="block p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900">{project.name}</h4>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                            project.status === 'active' ? 'bg-green-100 text-green-800' :
+                            project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                            project.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {project.status}
+                          </span>
+                          {project.priority && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                              project.priority === 'high' ? 'bg-red-100 text-red-800' :
+                              project.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {project.priority}
+                            </span>
+                          )}
+                          <span className="text-sm text-gray-500">
+                            {project.memberCount} member{project.memberCount !== 1 ? 's' : ''}
+                          </span>
                         </div>
-                        <span className="text-xs text-gray-500">{project.progress}%</span>
+                      </div>
+                      <div className="text-right ml-4">
+                        <div className="flex items-center mb-1">
+                          <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
+                            <div 
+                              className="bg-primary-600 h-1.5 rounded-full transition-all duration-300" 
+                              style={{ width: `${project.progress || 0}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-gray-500">{project.progress || 0}%</span>
+                        </div>
+                        {project.dueDate && (
+                          <div className="text-xs text-gray-500">
+                            Due: {new Date(project.dueDate).toLocaleDateString()}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <p className="text-gray-500 text-sm">No recent projects</p>
+                  <p className="text-gray-400 text-xs mt-1">Create your first project to get started</p>
+                  <Link 
+                    to="/projects/create" 
+                    className="inline-flex items-center px-3 py-1 mt-2 text-sm font-medium text-primary-600 hover:text-primary-700"
+                  >
+                    Create Project
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
         
         {/* Right Column - Task Management */}
         <div className="space-y-6">
-          {/* Task Summary */}
+          {/* My Task Summary */}
           <div className="bg-white rounded-lg shadow-sm border p-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">My Tasks</h3>
@@ -353,62 +420,120 @@ const Dashboard = () => {
               </Link>
             </div>
             
-            {taskStats.total === 0 ? (
+            {(dashboardStats?.tasks?.total || 0) === 0 ? (
               <div className="text-center py-6">
                 <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-                <p className="text-sm text-gray-500">No tasks assigned</p>
+                <p className="text-sm text-gray-500">No tasks assigned to you</p>
+                <p className="text-xs text-gray-400 mt-1">Tasks will appear here when assigned to you</p>
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Overdue Tasks */}
-                {overdueTasks.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-red-600 mb-2">Overdue ({overdueTasks.length})</h4>
-                    <div className="space-y-2">
-                      {overdueTasks.slice(0, 2).map(task => (
-                        <Link
-                          key={task.id || task._id}
-                          to={`/tasks/${task.id}`}
-                          className="block p-2 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-                        >
-                          <h5 className="font-medium text-sm text-gray-900">{task.title}</h5>
-                          <p className="text-xs text-gray-600">{task.projectName}</p>
-                          <p className="text-xs text-red-600">Due: {new Date(task.dueDate).toLocaleDateString()}</p>
-                        </Link>
-                      ))}
-                      {overdueTasks.length > 2 && (
-                        <p className="text-xs text-red-600 text-center">+{overdueTasks.length - 2} more overdue</p>
-                      )}
+                {/* Task Content with Fixed Height and Scroll */}
+                <div className="max-h-80 overflow-y-auto space-y-3 pr-2">
+                  {/* Overdue Tasks Section */}
+                  {(dashboardStats?.tasks?.overdue || 0) > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-red-600 mb-2 flex items-center sticky top-0 bg-white py-1 z-10">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.966-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        Overdue ({dashboardStats.tasks.overdue})
+                      </h4>
+                      <div className="space-y-2 mb-4">
+                        {dashboardStats?.recentTasks?.filter(task => {
+                          return task.dueDate && new Date(task.dueDate) < new Date() && !['done', 'cancelled'].includes(task.status);
+                        }).slice(0, 5).map(task => (
+                          <Link
+                            key={task._id}
+                            to={`/tasks/${task._id}`}
+                            className="block p-2 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                          >
+                            <h5 className="font-medium text-sm text-gray-900 truncate">{task.title}</h5>
+                            <p className="text-xs text-gray-600 truncate">{task.project?.name || 'No Project'}</p>
+                            <p className="text-xs text-red-600 mt-1">Due: {new Date(task.dueDate).toLocaleDateString()}</p>
+                          </Link>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                
-                {/* Upcoming Tasks */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    Upcoming ({sortedTasks.filter(task => !overdueTasks.includes(task) && task.status !== 'completed').length})
-                  </h4>
-                  <div className="space-y-2">
-                    {sortedTasks
-                      .filter(task => !overdueTasks.includes(task) && task.status !== 'completed')
-                      .slice(0, 3)
-                      .map(task => (
+                  )}
+                  
+                  {/* Active Tasks Section */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center sticky top-0 bg-white py-1 z-10">
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Active Tasks ({(dashboardStats?.tasks?.inProgress || 0) + (dashboardStats?.tasks?.todo || 0) + (dashboardStats?.tasks?.review || 0)})
+                    </h4>
+                    <div className="space-y-2">
+                      {dashboardStats?.recentTasks?.filter(task => 
+                        ['in-progress', 'todo', 'review'].includes(task.status)
+                      ).slice(0, 10).map(task => (
                         <Link
-                          key={task.id || task._id}
-                          to={`/tasks/${task.id}`}
+                          key={task._id}
+                          to={`/tasks/${task._id}`}
                           className="block p-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
                         >
-                          <h5 className="font-medium text-sm text-gray-900">{task.title}</h5>
-                          <p className="text-xs text-gray-600">{task.projectName}</p>
-                          <div className="flex items-center justify-between mt-1">
-                            <TaskStatusBadge status={task.status} />
-                            <p className="text-xs text-gray-500">Due: {new Date(task.dueDate).toLocaleDateString()}</p>
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h5 className="font-medium text-sm text-gray-900 truncate">{task.title}</h5>
+                              <p className="text-xs text-gray-600 truncate">{task.project?.name || 'No Project'}</p>
+                            </div>
+                            <div className="flex items-center space-x-1 ml-2 flex-shrink-0">
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium capitalize ${
+                                task.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
+                                task.status === 'todo' ? 'bg-blue-100 text-blue-800' :
+                                task.status === 'review' ? 'bg-purple-100 text-purple-800' :
+                                task.status === 'done' ? 'bg-green-100 text-green-800' :
+                                task.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {task.status === 'todo' ? 'To Do' : 
+                                 task.status === 'in-progress' ? 'In Progress' : 
+                                 task.status === 'review' ? 'Review' : 
+                                 task.status === 'done' ? 'Completed' : 
+                                 task.status === 'cancelled' ? 'Cancelled' : 
+                                 task.status}
+                              </span>
+                              {task.priority && (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium capitalize ${
+                                  task.priority === 'high' ? 'bg-red-100 text-red-800' :
+                                  task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {task.priority}
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          {task.dueDate && (
+                            <p className="text-xs text-gray-500 mt-1">Due: {new Date(task.dueDate).toLocaleDateString()}</p>
+                          )}
                         </Link>
-                      ))
-                    }
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Summary of task counts - Fixed at bottom */}
+                <div className="grid grid-cols-4 gap-2 pt-3 border-t border-gray-200 bg-white">
+                  <div className="text-center p-2 bg-blue-50 rounded-md">
+                    <div className="text-lg font-semibold text-blue-600">{dashboardStats?.tasks?.todo || 0}</div>
+                    <div className="text-xs text-blue-600">To Do</div>
+                  </div>
+                  <div className="text-center p-2 bg-yellow-50 rounded-md">
+                    <div className="text-lg font-semibold text-yellow-600">{dashboardStats?.tasks?.inProgress || 0}</div>
+                    <div className="text-xs text-yellow-600">In Progress</div>
+                  </div>
+                  <div className="text-center p-2 bg-purple-50 rounded-md">
+                    <div className="text-lg font-semibold text-purple-600">{dashboardStats?.tasks?.review || 0}</div>
+                    <div className="text-xs text-purple-600">Review</div>
+                  </div>
+                  <div className="text-center p-2 bg-green-50 rounded-md">
+                    <div className="text-lg font-semibold text-green-600">{dashboardStats?.tasks?.completed || 0}</div>
+                    <div className="text-xs text-green-600">Completed</div>
                   </div>
                 </div>
               </div>
@@ -459,152 +584,24 @@ const Dashboard = () => {
         </div>
       </div>
       
-      {/* Admin-only System Overview */}
+      {/* Admin-only Enhanced System Overview */}
       {hasRole(['admin']) && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">System Overview</h2>
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${systemHealth?.status === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              <span className="text-sm text-gray-600">
-                {systemHealth?.status === 'healthy' ? 'All Systems Operational' : 'Monitoring'}
-              </span>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <StatsCard
-                title="System Health"
-                value={systemHealth?.status === 'healthy' ? 'Excellent' : 'Good'}
-                subtitle={systemHealth?.message || 'All services operational'}
-                color="green"
-                isLive={isConnected}
-                isLoading={systemLoading}
-                icon={
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                }
-              />
-              <StatsCard
-                title="Storage Usage"
-                value={`${systemHealth?.storage?.used || 64}%`}
-                subtitle={`${systemHealth?.storage?.usedGB || 512}GB / ${systemHealth?.storage?.totalGB || 800}GB`}
-                progress={systemHealth?.storage?.used || 64}
-                color="blue"
-                isLive={isConnected}
-                isLoading={systemLoading}
-                icon={
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                  </svg>
-                }
-              />
-              <StatsCard
-                title="Active Users"
-                value={systemHealth?.activeUsers || 18}
-                subtitle={`${systemHealth?.dailyLogins || 24} logins today`}
-                color="purple"
-                isLive={isConnected}
-                isLoading={systemLoading}
-                icon={
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                  </svg>
-                }
-              />
-            </div>
-            
-            {/* Performance Metrics Section */}
-            {performanceMetrics && (
-              <div className="mt-6 pt-6 border-t">
-                <h3 className="text-sm font-medium text-gray-700 mb-4">Performance Metrics (Last 7 Days)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <StatsCard
-                    title="Avg Response Time"
-                    value={`${performanceMetrics.avgResponseTime || 245}ms`}
-                    color="green"
-                    trend={performanceMetrics.responseTimeTrend || 'up'}
-                    isLive={isConnected}
-                    isLoading={metricsLoading}
-                  />
-                  <StatsCard
-                    title="Uptime"
-                    value={`${performanceMetrics.uptime || 99.9}%`}
-                    color="blue"
-                    trend="up"
-                    isLive={isConnected}
-                    isLoading={metricsLoading}
-                  />
-                  <StatsCard
-                    title="API Calls"
-                    value={performanceMetrics.totalApiCalls || '2.4K'}
-                    subtitle="This week"
-                    color="indigo"
-                    isLive={isConnected}
-                    isLoading={metricsLoading}
-                  />
-                  <StatsCard
-                    title="Error Rate"
-                    value={`${performanceMetrics.errorRate || 0.1}%`}
-                    color={performanceMetrics.errorRate > 1 ? 'red' : 'green'}
-                    trend={performanceMetrics.errorRate > 1 ? 'down' : 'up'}
-                    isLive={isConnected}
-                    isLoading={metricsLoading}
-                  />
-                </div>
-              </div>
-            )}
-            
-            <div className="mt-6 pt-4 border-t">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-medium text-gray-700">Recent System Events</h3>
-                <button className="text-xs text-primary-600 hover:text-primary-800">
-                  View All Events
-                </button>
-              </div>
-              <div className="mt-3 space-y-3">
-                {systemHealth?.recentEvents?.map((event, index) => (
-                  <div key={event.id || index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className={`rounded-full w-2 h-2 mr-2 ${
-                        event.type === 'success' ? 'bg-green-500' :
-                        event.type === 'info' ? 'bg-blue-500' :
-                        event.type === 'warning' ? 'bg-yellow-500' :
-                        'bg-gray-500'
-                      }`}></div>
-                      <span className="text-sm text-gray-800">{event.message}</span>
-                    </div>
-                    <span className="text-xs text-gray-500">{event.timestamp}</span>
-                  </div>
-                )) || (
-                  // Default events if none provided
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="rounded-full w-2 h-2 bg-green-500 mr-2"></div>
-                        <span className="text-sm text-gray-800">Database backup completed</span>
-                      </div>
-                      <span className="text-xs text-gray-500">Today, 3:45 AM</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="rounded-full w-2 h-2 bg-blue-500 mr-2"></div>
-                        <span className="text-sm text-gray-800">System updates installed</span>
-                      </div>
-                      <span className="text-xs text-gray-500">Yesterday, 11:30 PM</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="rounded-full w-2 h-2 bg-yellow-500 mr-2"></div>
-                        <span className="text-sm text-gray-800">High CPU usage detected (resolved)</span>
-                      </div>
-                      <span className="text-xs text-gray-500">Yesterday, 2:12 PM</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+        <div className="mb-8 space-y-6">
+          <AdminDashboardCards
+            systemHealth={systemHealth}
+            performanceMetrics={performanceMetrics}
+            isConnected={isConnected}
+            systemLoading={systemLoading}
+            metricsLoading={metricsLoading}
+          />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <AdminActivityMonitor isConnected={isConnected} />
+            <AdminAnalytics 
+              dashboardStats={dashboardStats}
+              isConnected={isConnected}
+              loading={dashboardLoading}
+            />
           </div>
         </div>
       )}
@@ -614,10 +611,19 @@ const Dashboard = () => {
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold text-gray-800">Recent Activity</h3>
           <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
-            <span className="text-sm text-gray-500">
-              {activitiesLoading ? 'Loading...' : `${activities.length} recent activities`}
-            </span>
+            {hasRole(['admin']) && (
+              <>
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                <span className="text-sm text-gray-500">
+                  {activitiesLoading ? 'Loading...' : `${activities.length} recent activities`}
+                </span>
+              </>
+            )}
+            {!hasRole(['admin']) && (
+              <span className="text-sm text-gray-500">
+                {activitiesLoading ? 'Loading...' : `${activities.length} recent activities`}
+              </span>
+            )}
           </div>
         </div>
         

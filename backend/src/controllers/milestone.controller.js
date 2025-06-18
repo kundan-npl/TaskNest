@@ -4,6 +4,8 @@ const Task = require('../models/task.model');
 const Milestone = require('../models/milestone.model');
 const socketService = require('../services/socketService');
 const Notification = require('../models/notification.model');
+// **NEW: Import Email Service**
+const EmailService = require('../services/email.service');
 
 /**
  * Helper function to check user's role in a project
@@ -254,6 +256,62 @@ exports.updateMilestone = async (req, res, next) => {
       
       if (notifications.length > 0) {
         await Notification.insertMany(notifications);
+      }
+      
+      // **NEW: Milestone Completion Email Integration**
+      try {
+        const emailService = new EmailService();
+        await emailService.initialize();
+        
+        // Send milestone completion emails to project members
+        const emailRecipients = new Set();
+        
+        // Add project members with populated user data
+        const populatedProject = await Project.findById(projectId).populate('members.user', 'name email');
+        if (populatedProject.members && Array.isArray(populatedProject.members)) {
+          populatedProject.members.forEach(member => {
+            if (member.user && member.user.email) {
+              emailRecipients.add({
+                email: member.user.email,
+                name: member.user.name || 'Team Member'
+              });
+            }
+          });
+        }
+        
+        // Add assigned users to milestone
+        if (updatedMilestone.assignedTo && Array.isArray(updatedMilestone.assignedTo)) {
+          updatedMilestone.assignedTo.forEach(assignedUser => {
+            if (assignedUser.email) {
+              emailRecipients.add({
+                email: assignedUser.email,
+                name: assignedUser.name || 'Assigned User'
+              });
+            }
+          });
+        }
+        
+        // Send milestone completion emails  
+        const emailPromises = Array.from(emailRecipients).map(recipient => 
+          emailService.sendProjectMilestoneEmail({
+            email: recipient.email,
+            userName: recipient.name,
+            milestoneTitle: updatedMilestone.title,
+            projectName: project.title || project.name || 'Your Project',
+            completedBy: req.user.name || 'A team member',
+            projectId: project._id
+          }).catch(emailError => {
+            console.error('Failed to send milestone completion email to', recipient.email, ':', emailError);
+            // Don't fail the request if email fails
+          })
+        );
+        
+        await Promise.all(emailPromises);
+        console.log(`[MilestoneCompletion] Sent ${emailPromises.length} milestone completion notification emails`);
+        
+      } catch (emailError) {
+        console.error('Milestone completion email integration failed:', emailError);
+        // Don't fail the milestone update if email fails
       }
     }
 

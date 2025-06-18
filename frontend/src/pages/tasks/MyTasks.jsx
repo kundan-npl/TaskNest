@@ -54,7 +54,27 @@ const MyTasks = () => {
       
       console.log('[MyTasks] Current user ID:', currentUser._id);
       
-      // 1. Fetch all projects for the user
+      // 1. Fetch personal tasks first
+      const allTasks = [];
+      try {
+        const personalTasks = await taskService.getPersonalTasks();
+        console.log('[MyTasks] Found personal tasks:', personalTasks?.length);
+        
+        if (Array.isArray(personalTasks) && personalTasks.length > 0) {
+          const myPersonalTasks = personalTasks.map(task => ({
+            ...task,
+            projectId: null,
+            projectName: 'Personal Tasks'
+          }));
+          console.log(`[MyTasks] Found ${myPersonalTasks.length} personal tasks`);
+          allTasks.push(...myPersonalTasks);
+        }
+      } catch (personalTaskError) {
+        console.error('[MyTasks] Error fetching personal tasks:', personalTaskError);
+        // Continue with project tasks even if personal tasks fail
+      }
+      
+      // 2. Fetch all projects for the user
       const projects = await projectService.getAllProjects();
       console.log('[MyTasks] Found projects:', projects?.length);
       console.log('[MyTasks] Project details:', projects?.map(p => ({ 
@@ -62,47 +82,42 @@ const MyTasks = () => {
         name: p.name || p.title 
       })));
       
-      if (!projects || projects.length === 0) {
-        setTasks([]);
-        setLoading(false);
-        return;
-      }
-      
-      // 2. For each project, fetch its tasks
-      const allTasks = [];
-      for (const project of projects) {
-        try {
-          const projectTasks = await taskService.getProjectTasks(project._id);
-          console.log(`[MyTasks] Project ${project.name} has ${projectTasks?.length} tasks`);
-          
-          if (Array.isArray(projectTasks)) {
-            // Debug: Log all tasks and their assignedTo values
-            projectTasks.forEach(task => {
-              console.log(`[MyTasks] Task "${task.title}":`, {
-                assignedTo: task.assignedTo,
-                isAssignedToMe: Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id)
-              });
-            });
+      if (projects && projects.length > 0) {
+        // 3. For each project, fetch its tasks
+        for (const project of projects) {
+          try {
+            const projectTasks = await taskService.getProjectTasks(project._id);
+            console.log(`[MyTasks] Project ${project.name} has ${projectTasks?.length} tasks`);
             
-            // 3. Filter for tasks assigned to the current user and add project info
-            const myTasks = projectTasks
-              .filter((task) => Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id))
-              .map(task => ({
-                ...task,
-                projectId: project._id,
-                projectName: project.name || project.title
-              }));
-            console.log(`[MyTasks] Found ${myTasks.length} tasks assigned to me in project ${project.name || project.title}`);
-            console.log(`[MyTasks] Sample task with project info:`, myTasks[0] ? {
-              title: myTasks[0].title, 
-              projectId: myTasks[0].projectId, 
-              projectName: myTasks[0].projectName
-            } : 'No tasks');
-            allTasks.push(...myTasks);
+            if (Array.isArray(projectTasks)) {
+              // Debug: Log all tasks and their assignedTo values
+              projectTasks.forEach(task => {
+                console.log(`[MyTasks] Task "${task.title}":`, {
+                  assignedTo: task.assignedTo,
+                  isAssignedToMe: Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id)
+                });
+              });
+              
+              // Filter for tasks assigned to the current user and add project info
+              const myTasks = projectTasks
+                .filter((task) => Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id))
+                .map(task => ({
+                  ...task,
+                  projectId: project._id,
+                  projectName: project.name || project.title
+                }));
+              console.log(`[MyTasks] Found ${myTasks.length} tasks assigned to me in project ${project.name || project.title}`);
+              console.log(`[MyTasks] Sample task with project info:`, myTasks[0] ? {
+                title: myTasks[0].title, 
+                projectId: myTasks[0].projectId, 
+                projectName: myTasks[0].projectName
+              } : 'No tasks');
+              allTasks.push(...myTasks);
+            }
+          } catch (err) {
+            console.error(`[MyTasks] Error fetching tasks for project ${project.name}:`, err);
+            continue;
           }
-        } catch (err) {
-          console.error(`[MyTasks] Error fetching tasks for project ${project.name}:`, err);
-          continue;
         }
       }
       

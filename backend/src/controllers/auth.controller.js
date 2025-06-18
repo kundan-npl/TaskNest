@@ -20,6 +20,22 @@ exports.register = async (req, res, next) => {
       systemRole: 'user' // Everyone starts as user
     });
 
+    // Send welcome email to new user
+    try {
+      const emailService = require('../services/email.service');
+      if (emailService.isAvailable()) {
+        await emailService.sendWelcomeEmail({
+          email: user.email,
+          userName: user.name,
+          accountType: 'user'
+        });
+        console.log('Welcome email sent to:', user.email);
+      }
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError);
+      // Don't fail registration if email fails
+    }
+
     sendTokenResponse(user, 201, res);
   } catch (err) {
     next(err);

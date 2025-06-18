@@ -657,7 +657,7 @@ exports.getProjectActivity = async (req, res, next) => {
         type: 'task',
         id: task._id,
         title: task.title,
-        action: task.status === 'completed' ? 'completed' : 'updated',
+        action: task.status === 'done' ? 'completed' : 'updated',
         user: task.assignedTo || task.createdBy,
         timestamp: task.updatedAt,
         data: { status: task.status, priority: task.priority }
@@ -684,7 +684,7 @@ exports.getProjectActivity = async (req, res, next) => {
         type: 'milestone',
         id: milestone._id,
         title: milestone.title,
-        action: milestone.status === 'completed' ? 'completed' : 'updated',
+        action: milestone.status === 'done' ? 'completed' : 'updated',
         user: milestone.assignedTo?.[0] || milestone.createdBy,
         timestamp: milestone.updatedAt,
         data: { status: milestone.status, progress: milestone.progress }

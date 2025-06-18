@@ -217,10 +217,18 @@ const CreateTask = () => {
       
       // Send assignedTo as array
       let submitData = { ...formData };
-      if (!projectId && !isProjectTask) {
-        submitData.projectId = '';
+      
+      // Determine the correct projectId to use
+      let targetProjectId = null;
+      if (isProjectTask && formData.projectId) {
+        targetProjectId = formData.projectId;
+      } else if (projectId) {
+        // If we're in a project context (URL has projectId)
+        targetProjectId = projectId;
       }
-      await taskService.createTask(formData.projectId, { ...submitData, status, assignedTo: formData.assignedTo });
+      // If neither isProjectTask nor projectId, it's a personal task (targetProjectId stays null)
+      
+      await taskService.createTask(targetProjectId, { ...submitData, status, assignedTo: formData.assignedTo });
       
       toast.success('Task created successfully');
       

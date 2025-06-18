@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import taskService from '../../services/taskService';
+import projectService from '../../services/projectService';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import { formatLocalDateYYYYMMDD } from '../../utils/dateUtils.js';
@@ -24,85 +25,118 @@ const TaskCalendar = () => {
       const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
       
-      // In a real implementation, we would fetch data from the API with date filters
-      // const tasks = await taskService.getAllTasks(`?startDate=${firstDay.toISOString()}&endDate=${lastDay.toISOString()}`);
+      console.log('[TaskCalendar] Fetching tasks for date range:', {
+        firstDay: firstDay.toISOString(),
+        lastDay: lastDay.toISOString()
+      });
       
-      // For now, let's use mock data
-      const mockTasks = [
-        {
-          id: '1',
-          title: 'Implement Task Dashboard',
-          projectId: '1',
-          projectName: 'TaskNest Frontend',
-          status: 'in-progress',
-          priority: 'high',
-          dueDate: '2025-05-10',
-          assignedTo: {
-            id: '1',
-            name: 'John Doe',
-            avatar: 'https://i.pravatar.cc/150?img=1'
+      // Fetch tasks from all sources
+      const allTasks = [];
+      
+      // 1. Fetch personal tasks first
+      try {
+        const personalTasks = await taskService.getPersonalTasks();
+        console.log('[TaskCalendar] Found personal tasks:', personalTasks?.length);
+        
+        if (Array.isArray(personalTasks) && personalTasks.length > 0) {
+          // Filter personal tasks with due dates in current month
+          const monthlyPersonalTasks = personalTasks
+            .filter(task => {
+              if (!task.dueDate) return false;
+              
+              let taskDueDate;
+              if (typeof task.dueDate === 'string') {
+                if (task.dueDate.includes('T')) {
+                  taskDueDate = new Date(task.dueDate);
+                } else {
+                  taskDueDate = new Date(task.dueDate + 'T00:00:00');
+                }
+              } else {
+                taskDueDate = new Date(task.dueDate);
+              }
+              
+              return taskDueDate >= firstDay && taskDueDate <= lastDay;
+            })
+            .map(task => ({
+              ...task,
+              projectId: null,
+              projectName: 'Personal Tasks',
+              assignedTo: Array.isArray(task.assignedTo) && task.assignedTo.length > 0 
+                ? task.assignedTo[0].user || task.assignedTo[0] 
+                : null
+            }));
+          
+          console.log(`[TaskCalendar] Found ${monthlyPersonalTasks.length} personal tasks for this month`);
+          allTasks.push(...monthlyPersonalTasks);
+        }
+      } catch (personalTaskError) {
+        console.error('[TaskCalendar] Error fetching personal tasks:', personalTaskError);
+        // Continue with project tasks even if personal tasks fail
+      }
+      
+      // 2. Fetch all projects for the user
+      const projects = await projectService.getAllProjects();
+      console.log('[TaskCalendar] Found projects:', projects?.length);
+      
+      if (projects && projects.length > 0) {
+        // 3. Fetch tasks from all user's projects
+        for (const project of projects) {
+          try {
+            const projectTasks = await taskService.getProjectTasks(project._id);
+          
+          if (Array.isArray(projectTasks)) {
+            // Filter tasks that are assigned to the current user and have due dates in this month
+            const userTasks = projectTasks
+              .filter(task => {
+                // Check if task is assigned to current user
+                const isAssignedToMe = Array.isArray(task.assignedTo) && 
+                  task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id);
+                
+                // Check if task has a due date within the current month
+                if (!task.dueDate) return false;
+                
+                let taskDueDate;
+                if (typeof task.dueDate === 'string') {
+                  if (task.dueDate.includes('T')) {
+                    // Full ISO string - parse it
+                    taskDueDate = new Date(task.dueDate);
+                  } else {
+                    // YYYY-MM-DD format - parse it
+                    taskDueDate = new Date(task.dueDate + 'T00:00:00');
+                  }
+                } else {
+                  // Already a Date object
+                  taskDueDate = new Date(task.dueDate);
+                }
+                
+                const hasDueDateInMonth = taskDueDate >= firstDay && taskDueDate <= lastDay;
+                
+                return isAssignedToMe && hasDueDateInMonth;
+              })
+              .map(task => ({
+                ...task,
+                projectId: project._id,
+                projectName: project.name || project.title,
+                // Ensure we have the assignee info for display
+                assignedTo: Array.isArray(task.assignedTo) && task.assignedTo.length > 0 
+                  ? task.assignedTo[0].user || task.assignedTo[0] 
+                  : null
+              }));
+            
+            console.log(`[TaskCalendar] Found ${userTasks.length} tasks for user in project ${project.name} for this month`);
+            allTasks.push(...userTasks);
           }
-        },
-        {
-          id: '2',
-          title: 'Design User Flow',
-          projectId: '1',
-          projectName: 'TaskNest Frontend',
-          status: 'completed',
-          priority: 'medium',
-          dueDate: '2025-05-05',
-          assignedTo: {
-            id: '2',
-            name: 'Jane Smith',
-            avatar: 'https://i.pravatar.cc/150?img=2'
-          }
-        },
-        {
-          id: '3',
-          title: 'API Documentation',
-          projectId: '2',
-          projectName: 'TaskNest Backend',
-          status: 'not-started',
-          priority: 'low',
-          dueDate: '2025-05-15',
-          assignedTo: {
-            id: '1',
-            name: 'John Doe',
-            avatar: 'https://i.pravatar.cc/150?img=1'
-          }
-        },
-        {
-          id: '4',
-          title: 'User Testing',
-          projectId: '1',
-          projectName: 'TaskNest Frontend',
-          status: 'not-started',
-          priority: 'high',
-          dueDate: '2025-05-25',
-          assignedTo: {
-            id: '3',
-            name: 'Shobha Sharma',
-            avatar: 'https://i.pravatar.cc/150?img=3'
-          }
-        },
-        {
-          id: '5',
-          title: 'Bug Fixes',
-          projectId: '2',
-          projectName: 'TaskNest Backend',
-          status: 'in-progress',
-          priority: 'high',
-          dueDate: '2025-05-18',
-          assignedTo: {
-            id: '2',
-            name: 'Jane Smith',
-            avatar: 'https://i.pravatar.cc/150?img=2'
+          } catch (err) {
+            console.error(`[TaskCalendar] Error fetching tasks for project ${project.name}:`, err);
+            continue;
           }
         }
-      ];
+      }
       
-      setTasks(mockTasks);
+      console.log('[TaskCalendar] Total tasks for calendar:', allTasks.length);
+      setTasks(allTasks);
     } catch (error) {
+      console.error('[TaskCalendar] Error fetching tasks:', error);
       toast.error(error.message || 'Failed to load tasks');
     } finally {
       setLoading(false);
@@ -141,7 +175,27 @@ const TaskCalendar = () => {
   const getTasksForDay = (day) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     const dateString = formatLocalDateYYYYMMDD(date);
-    return tasks.filter(task => task.dueDate === dateString);
+    
+    return tasks.filter(task => {
+      if (!task.dueDate) return false;
+      
+      // Handle both date string formats and Date objects
+      let taskDueDate;
+      if (typeof task.dueDate === 'string') {
+        if (task.dueDate.includes('T')) {
+          // Full ISO string - extract just the date part
+          taskDueDate = task.dueDate.split('T')[0];
+        } else {
+          // Already in YYYY-MM-DD format
+          taskDueDate = task.dueDate;
+        }
+      } else {
+        // Date object
+        taskDueDate = formatLocalDateYYYYMMDD(new Date(task.dueDate));
+      }
+      
+      return taskDueDate === dateString;
+    });
   };
   
   // Handle day click
@@ -184,16 +238,21 @@ const TaskCalendar = () => {
           <div className="pt-6 space-y-1">
             {dayTasks.slice(0, 3).map((task) => (
               <div 
-                key={task.id} 
-                className={`text-xs p-1 rounded truncate ${
-                  task.status === 'completed' 
+                key={task._id} 
+                className={`text-xs p-1 rounded truncate cursor-pointer ${
+                  task.status === 'done' 
                     ? 'bg-green-100 text-green-800' 
-                    : task.priority === 'high'
+                    : task.priorityLevel === 'high'
                     ? 'bg-red-100 text-red-800'
-                    : task.priority === 'medium'
+                    : task.priorityLevel === 'medium'
                     ? 'bg-yellow-100 text-yellow-800'
                     : 'bg-blue-100 text-blue-800'
                 }`}
+                title={`${task.title} - ${task.projectName} (${task.status})`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/tasks/${task._id}`);
+                }}
               >
                 {task.title}
               </div>
@@ -296,6 +355,29 @@ const TaskCalendar = () => {
             <span className="text-sm">Completed</span>
           </div>
         </div>
+        
+        {/* Task Summary */}
+        {tasks.length > 0 && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">
+              This Month: {tasks.length} tasks
+            </h3>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded">
+                Done: {tasks.filter(t => t.status === 'done').length}
+              </span>
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                In Progress: {tasks.filter(t => t.status === 'in-progress').length}
+              </span>
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">
+                Review: {tasks.filter(t => t.status === 'review').length}
+              </span>
+              <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded">
+                To Do: {tasks.filter(t => t.status === 'todo').length}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

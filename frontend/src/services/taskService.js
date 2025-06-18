@@ -37,7 +37,14 @@ const taskService = {
   // Create a new task
   createTask: async (projectId, taskData) => {
     try {
-      const response = await api.post(`/projects/${projectId}/tasks`, taskData);
+      let response;
+      if (projectId && projectId.trim() !== '') {
+        // Project-specific task
+        response = await api.post(`/projects/${projectId}/tasks`, taskData);
+      } else {
+        // Personal/global task - use the global task endpoint
+        response = await api.post('/tasks', { ...taskData, project: null });
+      }
       return response.data.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to create task');
@@ -222,6 +229,16 @@ const taskService = {
       return response.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to archive completed tasks');
+    }
+  },
+
+  // Get personal tasks (tasks not associated with any project)
+  getPersonalTasks: async () => {
+    try {
+      const response = await api.get('/tasks');
+      return response.data.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to fetch personal tasks');
     }
   }
 };

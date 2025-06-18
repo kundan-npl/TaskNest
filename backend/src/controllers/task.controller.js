@@ -2,6 +2,7 @@ const Task = require('../models/task.model');
 const Project = require('../models/project.model');
 const { notifyTaskAssignees, notifyProjectMembers } = require('./notification.controller');
 const socketService = require('../services/socketService');
+const EmailService = require('../services/email.service');
 
 /**
  * Helper function to check user's role in a project
@@ -14,46 +15,66 @@ const getUserProjectRole = (project, userId) => {
 };
 
 /**
- * @desc    Get all tasks for a project
- * @route   GET /api/v1/projects/:projectId/tasks
+ * @desc    Get tasks (both project and personal tasks)
+ * @route   GET /api/v1/projects/:projectId/tasks (project tasks)
+ * @route   GET /api/v1/tasks (personal tasks)
  * @access  Private
  */
 exports.getTasks = async (req, res, next) => {
   try {
     const { projectId } = req.params;
     
-    // Check if project exists and user has access
-    const project = await Project.findById(projectId);
-    
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found'
+    if (projectId) {
+      // Project task retrieval logic
+      const project = await Project.findById(projectId);
+      
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found'
+        });
+      }
+      
+      // Check if user is a member of the project
+      const userMember = getUserProjectRole(project, req.user.id);
+      
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. You are not a member of this project.'
+        });
+      }
+      
+      // Get project tasks with populated fields
+      const tasks = await Task.find({ project: projectId })
+        .populate('assignedTo.user', 'name email department jobTitle')
+        .populate('createdBy', 'name email')
+        .populate('comments.author', 'name email')
+        .sort({ createdAt: -1 });
+      
+      res.status(200).json({
+        success: true,
+        count: tasks.length,
+        data: tasks
+      });
+    } else {
+      // Personal task retrieval logic
+      // Get all personal tasks (tasks with no project) assigned to the current user
+      const tasks = await Task.find({ 
+        project: null,
+        'assignedTo.user': req.user.id
+      })
+        .populate('assignedTo.user', 'name email department jobTitle')
+        .populate('createdBy', 'name email')
+        .populate('comments.author', 'name email')
+        .sort({ createdAt: -1 });
+      
+      res.status(200).json({
+        success: true,
+        count: tasks.length,
+        data: tasks
       });
     }
-    
-    // Check if user is a member of the project
-    const userMember = getUserProjectRole(project, req.user.id);
-    
-    if (!userMember) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. You are not a member of this project.'
-      });
-    }
-    
-    // Get tasks with populated fields
-    const tasks = await Task.find({ project: projectId })
-      .populate('assignedTo.user', 'name email department jobTitle')
-      .populate('createdBy', 'name email')
-      .populate('comments.author', 'name email')
-      .sort({ createdAt: -1 });
-    
-    res.status(200).json({
-      success: true,
-      count: tasks.length,
-      data: tasks
-    });
   } catch (error) {
     next(error);
   }
@@ -101,110 +122,188 @@ exports.getTask = async (req, res, next) => {
 };
 
 /**
- * @desc    Create task
- * @route   POST /api/v1/projects/:projectId/tasks
+ * @desc    Create task (both project and personal tasks)
+ * @route   POST /api/v1/projects/:projectId/tasks (project task)
+ * @route   POST /api/v1/tasks (personal task)
  * @access  Private
  */
 exports.createTask = async (req, res, next) => {
   try {
     const { projectId } = req.params;
-    const { assignedTo, assignees } = req.body;
+    const { assignedTo, assignees, project: requestProject } = req.body;
     
     // Handle both assignees and assignedTo for compatibility
     const usersToAssign = assignees || assignedTo;
     
-    // Check if project exists
-    const project = await Project.findById(projectId);
+    // Determine if this is a project task or personal task
+    const isProjectTask = projectId || (requestProject && requestProject !== null && requestProject !== '');
+    const targetProjectId = projectId || requestProject;
     
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found'
-      });
-    }
-    
-    // Check if user has access to create tasks
-    const userMember = getUserProjectRole(project, req.user.id);
-    
-    if (!userMember) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. You are not a member of this project.'
-      });
-    }
-    
-    // Supervisors and team-leads can create tasks, team-members need canCreateTasks permission
-    const canCreateTasks = userMember.role === 'supervisor' || 
-                          userMember.role === 'team-lead' || 
-                          userMember.permissions.canCreateTasks;
-    
-    if (!canCreateTasks) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. You do not have permission to create tasks.'
-      });
-    }
-    
-    // Validate assigned users are project members if provided
-    if (usersToAssign && usersToAssign.length > 0) {
-      const projectMemberIds = project.members.map(member => member.user.toString());
-      const invalidUsers = usersToAssign.filter(userId => !projectMemberIds.includes(userId));
+    if (isProjectTask) {
+      // Project task creation logic
+      const project = await Project.findById(targetProjectId);
       
-      if (invalidUsers.length > 0) {
-        return res.status(400).json({
+      if (!project) {
+        return res.status(404).json({
           success: false,
-          error: 'Some assigned users are not members of this project'
+          error: 'Project not found'
         });
       }
-    }
-    
-    // Add project and user to request body
-    req.body.project = projectId;
-    req.body.createdBy = req.user.id;
-    
-    // Format assignedTo if provided
-    if (usersToAssign && usersToAssign.length > 0) {
-      req.body.assignedTo = usersToAssign.map(userId => ({
-        user: userId,
-        assignedAt: new Date(),
-        assignedBy: req.user.id
-      }));
-    }
-    
-    const task = await Task.create(req.body);
-    await task.populate('assignedTo.user', 'name email department jobTitle');
-    await task.populate('createdBy', 'name email');
-    
-    // Emit real-time update for task creation
-    socketService.broadcastTaskUpdate(projectId, {
-      type: 'task_created',
-      task: task,
-      project: projectId,
-      timestamp: new Date()
-    });
-    
-    // Send notifications to assigned users
-    if (task.assignedTo && task.assignedTo.length > 0) {
-      const assigneeIds = task.assignedTo.map(assignment => assignment.user._id);
       
-      try {
-        await notifyTaskAssignees(assigneeIds, {
-          type: 'task_assigned',
-          title: 'New Task Assigned',
-          message: `You have been assigned to task: ${task.title}`,
-          relatedTask: task._id,
-          relatedProject: projectId
-        }, [req.user.id]);
-      } catch (notificationError) {
-        console.error('Failed to send notifications:', notificationError);
-        // Don't fail the request if notification fails
+      // Check if user has access to create tasks
+      const userMember = getUserProjectRole(project, req.user.id);
+      
+      if (!userMember) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. You are not a member of this project.'
+        });
       }
+      
+      // Supervisors and team-leads can create tasks, team-members need canCreateTasks permission
+      const canCreateTasks = userMember.role === 'supervisor' || 
+                            userMember.role === 'team-lead' || 
+                            userMember.permissions.canCreateTasks;
+      
+      if (!canCreateTasks) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. You do not have permission to create tasks.'
+        });
+      }
+      
+      // Validate assigned users are project members if provided
+      if (usersToAssign && usersToAssign.length > 0) {
+        const projectMemberIds = project.members.map(member => member.user.toString());
+        const invalidUsers = usersToAssign.filter(userId => !projectMemberIds.includes(userId));
+        
+        if (invalidUsers.length > 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Some assigned users are not members of this project'
+          });
+        }
+      }
+      
+      // Add project and user to request body
+      req.body.project = targetProjectId;
+      req.body.createdBy = req.user.id;
+      
+      // Format assignedTo if provided
+      if (usersToAssign && usersToAssign.length > 0) {
+        req.body.assignedTo = usersToAssign.map(userId => ({
+          user: userId,
+          assignedAt: new Date(),
+          assignedBy: req.user.id
+        }));
+      }
+      
+      const task = await Task.create(req.body);
+      await task.populate('assignedTo.user', 'name email department jobTitle');
+      await task.populate('createdBy', 'name email');
+      
+      // Emit real-time update for task creation
+      socketService.broadcastTaskUpdate(targetProjectId, {
+        type: 'task_created',
+        task: task,
+        project: targetProjectId,
+        timestamp: new Date()
+      });
+      
+      // Send notifications to assigned users
+      if (task.assignedTo && task.assignedTo.length > 0) {
+        const assigneeIds = task.assignedTo.map(assignment => assignment.user._id);
+        
+        try {
+          await notifyTaskAssignees(assigneeIds, {
+            type: 'task_assigned',
+            title: 'New Task Assigned',
+            message: `You have been assigned to task: ${task.title}`,
+            relatedTask: task._id,
+            relatedProject: targetProjectId
+          }, [req.user.id]);
+
+          // Send task assignment emails to assigned users
+          const emailService = require('../services/email.service');
+          if (emailService.isAvailable()) {
+            const project = await require('../models/project.model').findById(targetProjectId);
+            
+            for (const assignment of task.assignedTo) {
+              try {
+                await emailService.sendTaskAssignmentEmail({
+                  email: assignment.user.email,
+                  userName: assignment.user.name,
+                  taskTitle: task.title,
+                  projectName: project.title,
+                  assignedBy: req.user.name,
+                  dueDate: task.dueDate,
+                  taskId: task._id,
+                  projectId: targetProjectId
+                });
+              } catch (emailError) {
+                console.error(`Failed to send task assignment email to ${assignment.user.email}:`, emailError);
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('Failed to send notifications:', notificationError);
+          // Don't fail the request if notification fails
+        }
+      }
+      
+      res.status(201).json({
+        success: true,
+        data: task
+      });
+    } else {
+      // Personal task creation logic
+      // Validate assigned users exist if provided
+      if (usersToAssign && usersToAssign.length > 0) {
+        const User = require('../models/user.model');
+        const users = await User.find({ _id: { $in: usersToAssign } });
+        
+        if (users.length !== usersToAssign.length) {
+          return res.status(400).json({
+            success: false,
+            error: 'Some assigned users do not exist'
+          });
+        }
+      }
+      
+      // Set up task data for personal task
+      const taskData = {
+        ...req.body,
+        project: null, // No project for personal tasks
+        createdBy: req.user.id
+      };
+      
+      // Format assignedTo if provided
+      if (usersToAssign && usersToAssign.length > 0) {
+        taskData.assignedTo = usersToAssign.map(userId => ({
+          user: userId,
+          assignedAt: new Date(),
+          assignedBy: req.user.id
+        }));
+      } else {
+        // If no assignment specified, assign to the creator
+        taskData.assignedTo = [{
+          user: req.user.id,
+          assignedAt: new Date(),
+          assignedBy: req.user.id
+        }];
+      }
+      
+      const task = await Task.create(taskData);
+      await task.populate('assignedTo.user', 'name email department jobTitle');
+      await task.populate('createdBy', 'name email');
+      
+      // No project-specific real-time updates for personal tasks
+      
+      res.status(201).json({
+        success: true,
+        data: task
+      });
     }
-    
-    res.status(201).json({
-      success: true,
-      data: task
-    });
   } catch (error) {
     next(error);
   }
@@ -227,6 +326,9 @@ exports.updateTask = async (req, res, next) => {
         error: 'Task not found'
       });
     }
+    
+    // Store previous status for email notification
+    const previousStatus = task.status;
     
     // Check if user has access to update the task
     const project = await Project.findById(projectId);
@@ -286,6 +388,68 @@ exports.updateTask = async (req, res, next) => {
     // Populate the updated task for the Socket.IO event
     await task.populate('assignedTo.user', 'name email department jobTitle');
     await task.populate('createdBy', 'name email');
+    
+    // **NEW: Task Completion Email Integration**
+    // Check if task was just completed and send completion emails
+    if (updateData.status && 
+        (updateData.status === 'done' || updateData.status === 'completed') && 
+        previousStatus !== 'done' && previousStatus !== 'completed') {
+      
+      try {
+        const emailService = new EmailService();
+        await emailService.initialize();
+        
+        // Send completion emails to project members and assigned users
+        const emailRecipients = new Set();
+        
+        // Add project members
+        if (project.members && Array.isArray(project.members)) {
+          project.members.forEach(member => {
+            if (member.user && member.user.email) {
+              emailRecipients.add({
+                email: member.user.email,
+                name: member.user.name || 'Team Member'
+              });
+            }
+          });
+        }
+        
+        // Add assigned users
+        if (task.assignedTo && Array.isArray(task.assignedTo)) {
+          task.assignedTo.forEach(assignment => {
+            if (assignment.user && assignment.user.email) {
+              emailRecipients.add({
+                email: assignment.user.email,
+                name: assignment.user.name || 'Assigned User'
+              });
+            }
+          });
+        }
+        
+        // Send completion emails
+        const emailPromises = Array.from(emailRecipients).map(recipient => 
+          emailService.sendTaskCompletionEmail({
+            email: recipient.email,
+            userName: recipient.name,
+            taskTitle: task.title,
+            projectName: project.title || project.name || 'Your Project',
+            completedBy: req.user.name || 'A team member',
+            taskId: task._id,
+            projectId: project._id
+          }).catch(emailError => {
+            console.error('Failed to send task completion email to', recipient.email, ':', emailError);
+            // Don't fail the request if email fails
+          })
+        );
+        
+        await Promise.all(emailPromises);
+        console.log(`[TaskCompletion] Sent ${emailPromises.length} completion notification emails`);
+        
+      } catch (emailError) {
+        console.error('Task completion email integration failed:', emailError);
+        // Don't fail the task update if email fails
+      }
+    }
     
     // Emit real-time update for task update
     socketService.broadcastTaskUpdate(projectId, {
@@ -818,7 +982,7 @@ exports.moveTasksToStatus = async (req, res, next) => {
     }
 
     // Validate status
-    const validStatuses = ['todo', 'in_progress', 'in_review', 'completed', 'cancelled'];
+    const validStatuses = ['todo', 'in-progress', 'review', 'done', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -991,10 +1155,10 @@ exports.getTaskAnalytics = async (req, res, next) => {
           _id: null,
           totalTasks: { $sum: 1 },
           completedTasks: {
-            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] }
           },
           inProgressTasks: {
-            $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ['$status', 'in-progress'] }, 1, 0] }
           },
           todoTasks: {
             $sum: { $cond: [{ $eq: ['$status', 'todo'] }, 1, 0] }
@@ -1005,7 +1169,7 @@ exports.getTaskAnalytics = async (req, res, next) => {
                 {
                   $and: [
                     { $lt: ['$dueDate', new Date()] },
-                    { $ne: ['$status', 'completed'] }
+                    { $ne: ['$status', 'done'] }
                   ]
                 },
                 1,
@@ -1019,7 +1183,7 @@ exports.getTaskAnalytics = async (req, res, next) => {
           averageCompletionTime: {
             $avg: {
               $cond: [
-                { $eq: ['$status', 'completed'] },
+                { $eq: ['$status', 'done'] },
                 {
                   $subtract: ['$updatedAt', '$createdAt']
                 },
@@ -1138,13 +1302,8 @@ exports.getTaskByIdSimple = async (req, res, next) => {
       });
     }
 
-    // Map status to frontend expected values - fix review mapping
-    let status = task.status;
-    if (status === 'todo') status = 'not-started';
-    if (status === 'in-progress') status = 'in-progress';
-    if (status === 'done') status = 'completed';
-    if (status === 'review') status = 'review'; // Keep review as review, don't map to on-hold
-    if (status === 'cancelled') status = 'on-hold';
+    // Use the actual status from the Task model
+    const status = task.status;
 
     // Compose response
     res.status(200).json({
@@ -1185,3 +1344,5 @@ exports.getTaskByIdSimple = async (req, res, next) => {
     next(error);
   }
 };
+
+
