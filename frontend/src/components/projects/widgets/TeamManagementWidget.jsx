@@ -417,29 +417,7 @@ const TeamManagementWidget = ({
         </div>
       </div>
 
-      {/* Team Statistics */}
-      {teamStats && !loadingStats && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-green-50 dark:bg-green-900 p-3 rounded-lg">
-            <div className="text-green-600 dark:text-green-400 text-sm font-medium">Active Tasks</div>
-            <div className="text-2xl font-bold text-green-900 dark:text-green-100">
-              {teamStats.totalActiveTasks || 0}
-            </div>
-          </div>
-          <div className="bg-blue-50 dark:bg-blue-900 p-3 rounded-lg">
-            <div className="text-blue-600 dark:text-blue-400 text-sm font-medium">Completion Rate</div>
-            <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-              {teamStats.completionRate || 0}%
-            </div>
-          </div>
-          <div className="bg-purple-50 dark:bg-purple-900 p-3 rounded-lg">
-            <div className="text-purple-600 dark:text-purple-400 text-sm font-medium">Avg Response</div>
-            <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-              {teamStats.avgResponseTime || 0}h
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Search and Controls */}
       <div className="flex items-center space-x-4 mb-4">

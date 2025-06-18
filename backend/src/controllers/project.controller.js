@@ -439,15 +439,42 @@ exports.getProjectAnalytics = async (req, res, next) => {
     const Task = require('../models/task.model');
     const tasks = await Task.find({ project: project._id });
 
-    // Calculate analytics
+    // Status mapping function for consistent analytics
+    const isCompleted = (status) => {
+      return ['completed', 'done', 'finished'].includes(status?.toLowerCase());
+    };
+
+    const isInProgress = (status) => {
+      return ['in-progress', 'in_progress', 'inprogress', 'active', 'working'].includes(status?.toLowerCase());
+    };
+
+    const isNotStarted = (status) => {
+      return ['not-started', 'not_started', 'notstarted', 'todo', 'pending', 'new'].includes(status?.toLowerCase());
+    };
+
+    // Calculate analytics with proper status mapping
+    const completedTasks = tasks.filter(t => isCompleted(t.status));
+    const inProgressTasks = tasks.filter(t => isInProgress(t.status));
+    const notStartedTasks = tasks.filter(t => isNotStarted(t.status));
+    
+    // Calculate overdue tasks (tasks with deadline passed and not completed)
+    const now = new Date();
+    const overdueTasks = tasks.filter(t => {
+      if (!t.dueDate && !t.deadline) return false; // No deadline set
+      if (isCompleted(t.status)) return false; // Already completed
+      
+      const deadline = new Date(t.dueDate || t.deadline);
+      return deadline < now;
+    });
+
     const analytics = {
       totalTasks: tasks.length,
-      completedTasks: tasks.filter(t => t.status === 'completed').length,
-      inProgressTasks: tasks.filter(t => t.status === 'in-progress').length,
-      notStartedTasks: tasks.filter(t => t.status === 'not-started').length,
-      overdueTasks: tasks.filter(t => t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed').length,
-      highPriorityTasks: tasks.filter(t => t.priority === 'high' || t.priority === 'urgent').length,
-      completionPercentage: tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0,
+      completedTasks: completedTasks.length,
+      inProgressTasks: inProgressTasks.length,
+      notStartedTasks: notStartedTasks.length,
+      overdueTasks: overdueTasks.length,
+      highPriorityTasks: tasks.filter(t => ['high', 'urgent'].includes(t.priority?.toLowerCase())).length,
+      completionPercentage: tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0,
       activeMembers: project.members.length,
       recentActivity: tasks.filter(t => {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
