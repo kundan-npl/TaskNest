@@ -78,6 +78,32 @@ const EnhancedUserManagement = () => {
     }
   };
 
+  const handleDeleteUser = async (userId, userName) => {
+    // Prevent deleting current user
+    if (userId === currentUser?.id || userId === currentUser?._id) {
+      toast.error('You cannot delete your own account');
+      return;
+    }
+
+    // Double confirmation for deletion
+    const firstConfirm = window.confirm(`Are you sure you want to permanently delete user "${userName}"?`);
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(`This action cannot be undone. Are you absolutely sure you want to delete "${userName}"?`);
+    if (!secondConfirm) return;
+
+    try {
+      await userService.deleteUser(userId);
+      
+      setUsers(users.filter(user => user._id !== userId));
+      
+      toast.success(`User "${userName}" deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast.error(error.message || 'Failed to delete user');
+    }
+  };
+
   const handleSelectUser = (userId) => {
     setSelectedUsers(prev => 
       prev.includes(userId) 
@@ -115,9 +141,32 @@ const EnhancedUserManagement = () => {
           break;
         case 'delete':
           // API call for bulk deletion
-          if (window.confirm(`Are you sure you want to delete ${selectedUsers.length} users?`)) {
-            setUsers(users.filter(user => !selectedUsers.includes(user._id)));
-            toast.success(`${selectedUsers.length} users deleted`);
+          if (window.confirm(`Are you sure you want to permanently delete ${selectedUsers.length} users? This action cannot be undone.`)) {
+            try {
+              // Filter out current user from deletion
+              const usersToDelete = selectedUsers.filter(userId => 
+                userId !== currentUser?.id && userId !== currentUser?._id
+              );
+              
+              if (usersToDelete.length !== selectedUsers.length) {
+                toast.warning('Cannot delete your own account - it was excluded from bulk deletion');
+              }
+              
+              if (usersToDelete.length === 0) {
+                toast.error('No users to delete');
+                break;
+              }
+
+              // Delete users one by one
+              for (const userId of usersToDelete) {
+                await userService.deleteUser(userId);
+              }
+              setUsers(users.filter(user => !usersToDelete.includes(user._id)));
+              toast.success(`${usersToDelete.length} users deleted successfully`);
+            } catch (error) {
+              console.error('Error deleting users:', error);
+              toast.error('Failed to delete some users');
+            }
           }
           break;
         default:
@@ -320,6 +369,9 @@ const EnhancedUserManagement = () => {
                         onClick={() => handleEditUser(user)}
                         className="text-indigo-600 hover:text-indigo-900 px-2 py-1 rounded hover:bg-indigo-100 transition-colors"
                       >
+                        <svg className="h-4 w-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                         Edit
                       </button>
                       <button 
@@ -331,6 +383,17 @@ const EnhancedUserManagement = () => {
                         }`}
                       >
                         {user.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteUser(user._id, user.name)}
+                        className="px-2 py-1 rounded transition-colors text-red-600 hover:text-red-900 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete user permanently"
+                        disabled={user._id === currentUser?.id || user._id === currentUser?._id}
+                      >
+                        <svg className="h-4 w-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
                       </button>
                     </div>
                   </td>
