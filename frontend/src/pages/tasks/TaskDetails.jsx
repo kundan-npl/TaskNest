@@ -42,21 +42,15 @@ const TaskDetails = () => {
 
   useEffect(() => {
     const rawId = idFromParams;
-    // Log raw idFromParams immediately
-    console.log(`[TaskDetails] useEffect[idFromParams] - START. Raw idFromParams: "${rawId}", type: ${typeof rawId}`);
-
     // Trim rawId if it's a string, otherwise use as is
     const currentId = (typeof rawId === 'string') ? rawId.trim() : rawId;
-    console.log(`[TaskDetails] useEffect[idFromParams] - Processed currentId: "${currentId}", type: ${typeof currentId}`);
 
     // Validate the processed currentId
     const isValidId = currentId && typeof currentId === 'string' && currentId !== "undefined" && currentId !== "";
 
     if (isValidId) {
-      console.log(`[TaskDetails] useEffect[idFromParams] - ID is VALID: "${currentId}". Calling fetchTaskData.`);
       fetchTaskData(currentId);
     } else {
-      console.warn(`[TaskDetails] useEffect[idFromParams] - ID is INVALID. currentId: "${currentId}" (type: ${typeof currentId}), rawId: "${rawId}". Redirecting to /projects.`);
       setLoading(false); // Stop loading before redirect
       if (navigate && typeof navigate === 'function') {
           navigate('/projects');
@@ -74,10 +68,7 @@ const TaskDetails = () => {
     const isValidIdForFiles = task && currentId && typeof currentId === 'string' && currentId !== "undefined" && currentId !== "";
 
     if (isValidIdForFiles) {
-      console.debug(`[TaskDetails] useEffect[task,idFromParams]: Task and valid ID "${currentId}". Fetching files.`);
       fetchTaskFiles(currentId);
-    } else if (task) {
-      console.warn(`[TaskDetails] useEffect[task,idFromParams]: Task exists, but ID for files is invalid. currentId: "${currentId}" (type: ${typeof currentId}), rawId: "${rawId}".`);
     }
   }, [task, idFromParams]); // idFromParams is the dependency
 
@@ -92,24 +83,18 @@ const TaskDetails = () => {
   }, [task, idFromParams]);
 
   const fetchTaskData = async (taskIdArg) => {
-    console.log(`[TaskDetails] fetchTaskData - START. Received taskIdArg: "${taskIdArg}", type: ${typeof taskIdArg}`);
     const currentTaskId = (typeof taskIdArg === 'string') ? taskIdArg.trim() : taskIdArg;
-    console.log(`[TaskDetails] fetchTaskData - Processed currentTaskId: "${currentTaskId}", type: ${typeof currentTaskId}`);
 
     const isValidTaskId = currentTaskId && typeof currentTaskId === 'string' && currentTaskId !== "undefined" && currentTaskId !== "";
 
     if (!isValidTaskId) {
-      console.warn(`[TaskDetails] fetchTaskData - Invalid currentTaskId: "${currentTaskId}" (type: ${typeof currentTaskId}), raw taskIdArg: "${taskIdArg}". Aborting data fetch.`);
       setLoading(false); // Ensure loading is stopped
       // Do not navigate from here; the main useEffect handles redirection based on idFromParams
       return;
     }
 
-    console.log(`[TaskDetails] fetchTaskData - Task ID "${currentTaskId}" is VALID. Proceeding to fetch.`);
     try {
       setLoading(true);
-      // console.debug('[TaskDetails] Fetching task data for id (arg):', currentTaskId); // Covered by new log
-
       // Use getTaskByIdSimple since we only have the task ID
       const taskData = await taskService.getTaskByIdSimple(currentTaskId);
       setTask(taskData);
@@ -133,22 +118,17 @@ const TaskDetails = () => {
   };
 
   const fetchTaskFiles = async (taskIdArg) => {
-    console.log(`[TaskDetails] fetchTaskFiles - START. Received taskIdArg: "${taskIdArg}", type: ${typeof taskIdArg}`);
     const currentTaskId = (typeof taskIdArg === 'string') ? taskIdArg.trim() : taskIdArg;
-    console.log(`[TaskDetails] fetchTaskFiles - Processed currentTaskId: "${currentTaskId}", type: ${typeof currentTaskId}`);
 
     const isValidTaskId = currentTaskId && typeof currentTaskId === 'string' && currentTaskId !== "undefined" && currentTaskId !== "";
 
     if (!isValidTaskId) {
-      console.warn(`[TaskDetails] fetchTaskFiles - Invalid currentTaskId: "${currentTaskId}" (type: ${typeof currentTaskId}), raw taskIdArg: "${taskIdArg}". Aborting file fetch.`);
       setLoadingFiles(false); // Ensure loading is stopped
       return;
     }
     
-    console.log(`[TaskDetails] fetchTaskFiles - Task ID "${currentTaskId}" is VALID. Proceeding to fetch files.`);
     try {
       setLoadingFiles(true);
-      // console.debug('[TaskDetails] Fetching task files for taskId:', currentTaskId); // Covered by new log
       const files = await fileService.listFiles({ taskId: currentTaskId });
       setTaskFiles(files);
     } catch (error) {
@@ -946,7 +926,6 @@ const TaskDetails = () => {
               <div className="space-y-2 max-h-72 overflow-y-auto">
                 {taskFiles.map((file) => {
                   const fileKey = getFileKey(file);
-                  console.log('[File Render] file:', file, 'fileKey:', fileKey);
                   if (!fileKey) return null;
                   return (
                     <div key={file.id || file._id || file.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">

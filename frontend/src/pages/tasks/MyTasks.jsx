@@ -52,13 +52,10 @@ const MyTasks = () => {
       setLoading(true);
       setError(null);
       
-      console.log('[MyTasks] Current user ID:', currentUser._id);
-      
       // 1. Fetch personal tasks first
       const allTasks = [];
       try {
         const personalTasks = await taskService.getPersonalTasks();
-        console.log('[MyTasks] Found personal tasks:', personalTasks?.length);
         
         if (Array.isArray(personalTasks) && personalTasks.length > 0) {
           const myPersonalTasks = personalTasks.map(task => ({
@@ -66,38 +63,22 @@ const MyTasks = () => {
             projectId: null,
             projectName: 'Personal Tasks'
           }));
-          console.log(`[MyTasks] Found ${myPersonalTasks.length} personal tasks`);
           allTasks.push(...myPersonalTasks);
         }
       } catch (personalTaskError) {
-        console.error('[MyTasks] Error fetching personal tasks:', personalTaskError);
         // Continue with project tasks even if personal tasks fail
       }
       
       // 2. Fetch all projects for the user
       const projects = await projectService.getAllProjects();
-      console.log('[MyTasks] Found projects:', projects?.length);
-      console.log('[MyTasks] Project details:', projects?.map(p => ({ 
-        id: p._id, 
-        name: p.name || p.title 
-      })));
       
       if (projects && projects.length > 0) {
         // 3. For each project, fetch its tasks
         for (const project of projects) {
           try {
             const projectTasks = await taskService.getProjectTasks(project._id);
-            console.log(`[MyTasks] Project ${project.name} has ${projectTasks?.length} tasks`);
             
             if (Array.isArray(projectTasks)) {
-              // Debug: Log all tasks and their assignedTo values
-              projectTasks.forEach(task => {
-                console.log(`[MyTasks] Task "${task.title}":`, {
-                  assignedTo: task.assignedTo,
-                  isAssignedToMe: Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id)
-                });
-              });
-              
               // Filter for tasks assigned to the current user and add project info
               const myTasks = projectTasks
                 .filter((task) => Array.isArray(task.assignedTo) && task.assignedTo.some(a => (a.user?._id || a.user) === currentUser._id))
@@ -106,30 +87,16 @@ const MyTasks = () => {
                   projectId: project._id,
                   projectName: project.name || project.title
                 }));
-              console.log(`[MyTasks] Found ${myTasks.length} tasks assigned to me in project ${project.name || project.title}`);
-              console.log(`[MyTasks] Sample task with project info:`, myTasks[0] ? {
-                title: myTasks[0].title, 
-                projectId: myTasks[0].projectId, 
-                projectName: myTasks[0].projectName
-              } : 'No tasks');
               allTasks.push(...myTasks);
             }
           } catch (err) {
-            console.error(`[MyTasks] Error fetching tasks for project ${project.name}:`, err);
             continue;
           }
         }
       }
       
-      console.log('[MyTasks] Total tasks assigned to me:', allTasks.length);
-      console.log('[MyTasks] Sample tasks with project info:', allTasks.slice(0, 2).map(t => ({
-        title: t.title,
-        projectId: t.projectId,
-        projectName: t.projectName
-      })));
       setTasks(allTasks);
     } catch (err) {
-      console.error('[MyTasks] Error fetching tasks:', err);
       setError('Failed to load tasks.');
     } finally {
       setLoading(false);
@@ -138,18 +105,11 @@ const MyTasks = () => {
 
   // Get unique projects for filter dropdown
   const projects = useMemo(() => {
-    console.log('[MyTasks] Building projects dropdown from tasks:', tasks.length);
-    console.log('[MyTasks] Sample task project info:', tasks[0] ? {
-      projectId: tasks[0].projectId,
-      projectName: tasks[0].projectName
-    } : 'No tasks');
-    
     const uniqueProjects = [...new Set(tasks.map(task => JSON.stringify({ id: task.projectId, name: task.projectName })))];
     const parsedProjects = uniqueProjects
       .map(p => JSON.parse(p))
       .filter(p => p.id && p.name); // Filter out invalid projects
     
-    console.log('[MyTasks] Projects for dropdown:', parsedProjects);
     return parsedProjects;
   }, [tasks]);
 
@@ -171,12 +131,8 @@ const MyTasks = () => {
     };
     
     let filtered = tasks.filter(task => {
-      // Debug: Log task status
-      console.log(`[MyTasks] Filtering task "${task.title}": raw status="${task.status}", normalized="${normalizeStatus(task.status)}"`);
-      
       // Status filter - use normalized status
       if (filters.status && normalizeStatus(task.status) !== filters.status) {
-        console.log(`[MyTasks] Task "${task.title}" filtered out by status filter`);
         return false;
       }
       
@@ -215,7 +171,6 @@ const MyTasks = () => {
       
       // Show/hide completed
       if (!showCompleted && normalizeStatus(task.status) === 'completed') {
-        console.log(`[MyTasks] Task "${task.title}" filtered out because completed tasks are hidden`);
         return false;
       }
       
@@ -289,25 +244,6 @@ const MyTasks = () => {
       
       return dueDate < today;
     }).length;
-    
-    // Debug logging to verify calculations
-    console.log('Task Statistics Debug:', {
-      total,
-      completed,
-      inProgress,
-      notStarted,
-      onHold,
-      overdue,
-      statusSum: completed + inProgress + notStarted + onHold,
-      tasksWithDueDate: tasks.filter(t => t.dueDate).length,
-      rawTasks: tasks.map(t => ({ 
-        title: t.title, 
-        rawStatus: t.status,
-        normalizedStatus: normalizeStatus(t.status),
-        dueDate: t.dueDate,
-        isOverdue: t.dueDate && new Date(t.dueDate) < new Date() && normalizeStatus(t.status) !== 'completed'
-      }))
-    });
     
     // Validation: ensure status counts add up correctly
     const statusSum = completed + inProgress + notStarted + review + onHold;

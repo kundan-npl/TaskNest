@@ -13,7 +13,6 @@ const taskService = {
 
   // Get a single task by ID (updated: requires projectId)
   getTaskById: async (projectId, id) => {
-    console.log('[taskService.getTaskById] called with:', { projectId, id, typeofId: typeof id });
     try {
       const response = await api.get(`/projects/${projectId}/tasks/${id}`);
       return response.data.data;
@@ -24,7 +23,6 @@ const taskService = {
 
   // Fallback: Get a single task by ID only (no projectId)
   getTaskByIdSimple: async (id) => {
-    console.log('[taskService.getTaskByIdSimple] called with:', { id, typeofId: typeof id });
     try {
       // Use the new /simple endpoint for mapped fields
       const response = await api.get(`/tasks/${id}/simple`);

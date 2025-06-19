@@ -25,18 +25,12 @@ const TaskCalendar = () => {
       const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
       
-      console.log('[TaskCalendar] Fetching tasks for date range:', {
-        firstDay: firstDay.toISOString(),
-        lastDay: lastDay.toISOString()
-      });
-      
       // Fetch tasks from all sources
       const allTasks = [];
       
       // 1. Fetch personal tasks first
       try {
         const personalTasks = await taskService.getPersonalTasks();
-        console.log('[TaskCalendar] Found personal tasks:', personalTasks?.length);
         
         if (Array.isArray(personalTasks) && personalTasks.length > 0) {
           // Filter personal tasks with due dates in current month
@@ -66,17 +60,14 @@ const TaskCalendar = () => {
                 : null
             }));
           
-          console.log(`[TaskCalendar] Found ${monthlyPersonalTasks.length} personal tasks for this month`);
           allTasks.push(...monthlyPersonalTasks);
         }
       } catch (personalTaskError) {
-        console.error('[TaskCalendar] Error fetching personal tasks:', personalTaskError);
         // Continue with project tasks even if personal tasks fail
       }
       
       // 2. Fetch all projects for the user
       const projects = await projectService.getAllProjects();
-      console.log('[TaskCalendar] Found projects:', projects?.length);
       
       if (projects && projects.length > 0) {
         // 3. Fetch tasks from all user's projects
@@ -123,20 +114,16 @@ const TaskCalendar = () => {
                   : null
               }));
             
-            console.log(`[TaskCalendar] Found ${userTasks.length} tasks for user in project ${project.name} for this month`);
             allTasks.push(...userTasks);
           }
           } catch (err) {
-            console.error(`[TaskCalendar] Error fetching tasks for project ${project.name}:`, err);
             continue;
           }
         }
       }
       
-      console.log('[TaskCalendar] Total tasks for calendar:', allTasks.length);
       setTasks(allTasks);
     } catch (error) {
-      console.error('[TaskCalendar] Error fetching tasks:', error);
       toast.error(error.message || 'Failed to load tasks');
     } finally {
       setLoading(false);
