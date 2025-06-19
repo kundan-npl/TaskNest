@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import fileService from '../../../services/fileService';
+import { api } from '../../../services/authService';
 
 const FilesWidget = ({ 
   files: propFiles = [], 
@@ -54,23 +55,13 @@ const FilesWidget = ({
     }
   }, [project?._id, project?.id]);
 
-  // Helper to get JWT token from localStorage (if present)
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
-  };
-
   // Check if Google Drive is connected (via backend)
   useEffect(() => {
     const checkDriveStatus = async () => {
       if (!project?._id && !project?.id) return;
       try {
-        const res = await fetch(`/api/v1/projects/${project._id || project.id}/drive/status`, {
-          credentials: 'include',
-          headers: { ...getAuthHeaders() }
-        });
-        const data = await res.json();
-        setGoogleDriveConnected(!!data.connected);
+        const res = await api.get(`/projects/${project._id || project.id}/drive/status`);
+        setGoogleDriveConnected(!!res.data.connected);
       } catch (err) {
         setGoogleDriveConnected(false);
       }
@@ -84,12 +75,8 @@ const FilesWidget = ({
       if (!googleDriveConnected || !project?._id && !project?.id) return;
       setGoogleDriveLoading(true);
       try {
-        const res = await fetch(`/api/v1/projects/${project._id || project.id}/drive/files`, {
-          credentials: 'include',
-          headers: { ...getAuthHeaders() }
-        });
-        const data = await res.json();
-        setGoogleDriveFiles(data.files || []);
+        const res = await api.get(`/projects/${project._id || project.id}/drive/files`);
+        setGoogleDriveFiles(res.data.files || []);
       } catch (err) {
         toast.error('Failed to fetch Google Drive files');
       } finally {
@@ -432,13 +419,9 @@ const FilesWidget = ({
   const handleConnectGoogleDrive = async () => {
     if (!project?._id && !project?.id) return;
     try {
-      const res = await fetch(`/api/v1/projects/${project._id || project.id}/drive/auth-url`, {
-        credentials: 'include',
-        headers: { ...getAuthHeaders() }
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
+      const res = await api.get(`/projects/${project._id || project.id}/drive/auth-url`);
+      if (res.data.url) {
+        window.location.href = res.data.url;
       } else {
         toast.error('Failed to get Google Drive auth URL');
       }
