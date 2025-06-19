@@ -540,8 +540,8 @@ const Home = () => {
               <ul className="space-y-2 text-gray-400">
                 <li><Link to="#" className="hover:text-white transition-colors">Help Center</Link></li>
                 <li><Link to="#" className="hover:text-white transition-colors">Documentation</Link></li>
-                <li><Link to="#" className="hover:text-white transition-colors">Privacy Policy</Link></li>
-                <li><Link to="#" className="hover:text-white transition-colors">Terms of Service</Link></li>
+                <li><Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
+                <li><Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link></li>
               </ul>
             </div>
           </div>

@@ -19,6 +19,10 @@ import AcceptInvitation from './pages/auth/AcceptInvitation.jsx';
 import InvitePage from './pages/auth/InvitePage.jsx';
 import EmailSent from './pages/auth/EmailSent.jsx';
 
+// Legal pages
+import PrivacyPolicy from './pages/legal/PrivacyPolicy.jsx';
+import TermsOfService from './pages/legal/TermsOfService.jsx';
+
 // Protected route component
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
 import RoleBasedRoute from './components/common/RoleBasedRoute.jsx';
@@ -81,6 +85,10 @@ function App() {
           <Routes>
           {/* Public Home Route */}
           <Route path="/home" element={<Home />} />
+          
+          {/* Legal Pages */}
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
           
           {/* Auth Routes */}
           <Route element={<AuthLayout />}>

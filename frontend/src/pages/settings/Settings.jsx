@@ -354,9 +354,9 @@ const Settings = () => {
               </div>
               
               <div>
-                <a href="#" className="text-primary-600 hover:text-primary-700 text-sm">
+                <Link to="/privacy" className="text-primary-600 hover:text-primary-700 text-sm">
                   Privacy Policy
-                </a>
+                </Link>
               </div>
               
               <div>
