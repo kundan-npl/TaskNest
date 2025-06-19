@@ -52,8 +52,20 @@ const authService = {
       if (error.response) {
         console.error('Error response data:', error.response.data);
         console.error('Error response status:', error.response.status);
+        
+        // Pass through the backend error message for better UX
+        const backendMessage = error.response.data?.error;
+        if (backendMessage) {
+          throw new Error(backendMessage);
+        }
       }
-      throw new Error(error.response?.data?.error || error.message || 'Login failed');
+      
+      // Handle network errors
+      if (error.code === 'NETWORK_ERROR' || !error.response) {
+        throw new Error('Connection problem. Please check your internet and try again');
+      }
+      
+      throw new Error(error.message || 'Login failed');
     }
   },
 
@@ -63,7 +75,21 @@ const authService = {
       const response = await api.post('/auth/register', userData);
       return response.data;
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Registration failed');
+      console.error('Registration error:', error);
+      if (error.response) {
+        // Pass through the backend error message for better UX
+        const backendMessage = error.response.data?.error;
+        if (backendMessage) {
+          throw new Error(backendMessage);
+        }
+      }
+      
+      // Handle network errors
+      if (error.code === 'NETWORK_ERROR' || !error.response) {
+        throw new Error('Connection problem. Please check your internet and try again');
+      }
+      
+      throw new Error(error.message || 'Registration failed');
     }
   },
 

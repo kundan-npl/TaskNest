@@ -5,6 +5,7 @@ import taskService from '../../services/taskService';
 import fileService from '../../services/fileService';
 import { useAuth } from '../../context/AuthContext.jsx';
 import FileUploader from '../../components/common/FileUploader';
+import Avatar from '../../components/common/Avatar';
 
 const TaskDetails = () => {
   const { id: idFromParams } = useParams(); // Renamed for clarity
@@ -21,6 +22,23 @@ const TaskDetails = () => {
   const [taskFiles, setTaskFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [showFileUploader, setShowFileUploader] = useState(false);
+
+  // Function to check if current user can update task status
+  const canUpdateTaskStatus = () => {
+    if (!currentUser || !task) return false;
+    
+    // Check if user is assigned to this task
+    const isAssignedToTask = task.assignedTo && task.assignedTo.some(assignment => {
+      const assignedUserId = assignment._id || assignment.id;
+      const currentUserId = currentUser._id || currentUser.id;
+      return assignedUserId === currentUserId;
+    });
+
+    // Check if user has admin role or is assigned to the task
+    // Note: For TaskDetails, we don't have project context to check supervisor/team-lead roles
+    // So we rely on admin role check and assignment check
+    return hasRole(['admin']) || isAssignedToTask;
+  };
 
   useEffect(() => {
     const rawId = idFromParams;
@@ -170,6 +188,23 @@ const TaskDetails = () => {
   };
 
   const handleStatusChange = async (newStatus) => {
+    // Check if user is assigned to this task
+    const isAssignedToTask = task && task.assignedTo && task.assignedTo.some(assignment => {
+      const assignedUserId = assignment._id || assignment.id;
+      const currentUserId = currentUser?._id || currentUser?.id;
+      return assignedUserId === currentUserId;
+    });
+
+    // Check if user has permission to update task status
+    // Only supervisors, team leads, and assigned members can update status
+    const canUpdateStatus = hasRole(['admin']) || // Admin can do anything
+                           isAssignedToTask; // Assigned member can update
+
+    if (!canUpdateStatus) {
+      toast.error('Only supervisors, team leads, and assigned members can update task status');
+      return;
+    }
+
     try {
       setStatusUpdating(true);
       
@@ -405,8 +440,8 @@ const TaskDetails = () => {
                 <span className="font-medium text-gray-700">Status:</span>
                 {renderTaskStatus(task.status)}
                 
-                {/* Compact Status Update Controls */}
-                {hasRole(['admin', 'user']) && (
+                {/* Compact Status Update Controls - Only show for authorized users */}
+                {canUpdateTaskStatus() && (
                   <div className="flex items-center gap-1 ml-2">
                     <span className="text-xs text-gray-500 mr-1">Quick update:</span>
                     <button
@@ -487,10 +522,10 @@ const TaskDetails = () => {
               <div className="bg-gray-50 px-4 py-3 rounded-md">
                 <div className="text-xs text-gray-500">Created By</div>
                 <div className="mt-1 text-sm font-medium flex items-center">
-                  <img 
-                    src={task.createdBy.avatar}
-                    alt={task.createdBy.name}
-                    className="w-5 h-5 rounded-full mr-2"
+                  <Avatar 
+                    user={task.createdBy}
+                    size="sm"
+                    className="mr-2"
                   />
                   {task.createdBy.name}
                 </div>
@@ -503,10 +538,10 @@ const TaskDetails = () => {
                     <div className="flex flex-wrap gap-2">
                       {task.assignedTo.map((user, index) => (
                         <div key={user._id || index} className="flex items-center">
-                          <img 
-                            src={user.avatar || `https://i.pravatar.cc/150?img=${index + 1}`}
-                            alt={user.name}
-                            className="w-5 h-5 rounded-full mr-2"
+                          <Avatar 
+                            user={user}
+                            size="sm"
+                            className="mr-2"
                           />
                           <span>{user.name}</span>
                           {index < task.assignedTo.length - 1 && <span className="ml-1 text-gray-400">,</span>}
@@ -668,10 +703,10 @@ const TaskDetails = () => {
                   <div key={comment.id} className="bg-gray-50 p-4 rounded-lg">
                     <div className="flex justify-between">
                       <div className="flex items-start">
-                        <img 
-                          src={comment.user.avatar} 
-                          alt={comment.user.name}
-                          className="h-8 w-8 rounded-full mr-3"
+                        <Avatar 
+                          user={comment.user}
+                          size="sm"
+                          className="mr-3"
                         />
                         <div>
                           <div className="font-medium text-gray-900">

@@ -142,7 +142,7 @@ exports.getProject = async (req, res, next) => {
  */
 exports.createProject = async (req, res, next) => {
   try {
-    const { title, description, priorityLevel, deadline } = req.body;
+    const { title, description, priorityLevel, deadline, status } = req.body;
 
     // Create project with creator as supervisor
     const project = await Project.create({
@@ -150,6 +150,7 @@ exports.createProject = async (req, res, next) => {
       description,
       priorityLevel: priorityLevel || 'medium',
       deadline,
+      status: status || 'planning',
       createdBy: req.user.id,
       members: [{
         user: req.user.id,
@@ -179,6 +180,26 @@ exports.createProject = async (req, res, next) => {
       project: project,
       timestamp: new Date()
     });
+
+    // Create notification for project creation
+    try {
+      // For single-member projects, include the creator in notifications
+      await notifyProjectMembers(project._id, {
+        type: 'project_created',
+        title: 'New Project Created',
+        message: `Project "${project.title}" has been created successfully`,
+        sender: req.user.id,
+        actionUrl: `/projects/${project._id}`,
+        metadata: {
+          projectTitle: project.title,
+          createdBy: req.user.name,
+          action: 'project_created'
+        }
+      }); // Don't exclude anyone for project creation
+    } catch (notificationError) {
+      console.error('Failed to send project creation notification:', notificationError);
+      // Don't fail the request if notification fails
+    }
 
     res.status(201).json({
       success: true,
@@ -795,6 +816,27 @@ exports.inviteMember = async (req, res, next) => {
         inviteLink
       });
     }
+
+    // Create notifications for project members about the invitation
+    try {
+      await notifyProjectMembers(project._id, {
+        type: 'member_added',
+        title: 'New Member Invitation',
+        message: `${req.user.name} invited ${email} to join the project as ${role}`,
+        sender: req.user.id,
+        actionUrl: `/projects/${project._id}/members`,
+        metadata: {
+          invitedEmail: email,
+          invitedRole: role,
+          invitedBy: req.user.name,
+          action: 'member_invited'
+        }
+      }, [req.user.id]); // Exclude the inviter from notification
+    } catch (notificationError) {
+      console.error('Failed to send member invitation notifications:', notificationError);
+      // Don't fail the request if notification fails
+    }
+
     // --- Respond to client ---
     if (emailResult.success) {
       res.status(200).json({

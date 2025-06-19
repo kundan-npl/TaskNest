@@ -6,6 +6,7 @@ import {
   FolderIcon
 } from '@heroicons/react/24/outline';
 import TaskStatusBadge from '../common/TaskStatusBadge';
+import Avatar from '../common/Avatar';
 
 const CompactTaskCard = ({ 
   task, 
@@ -104,11 +105,10 @@ const CompactTaskCard = ({
             {/* Assignee Avatar */}
             {task.assignedTo && (
               <div className="flex items-center gap-1">
-                <img 
-                  src={task.assignedTo.avatar} 
+                <Avatar 
+                  user={task.assignedTo}
+                  size="sm"
                   alt={task.assignedTo.name}
-                  className="w-6 h-6 rounded-full"
-                  title={task.assignedTo.name}
                 />
               </div>
             )}

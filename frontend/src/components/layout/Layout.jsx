@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar.jsx';
 import Header from './Header.jsx';
-import { ConnectionStatus } from '../common/RealTimeIndicators.jsx';
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar
@@ -36,9 +35,6 @@ const Layout = () => {
           </div>
         </main>
       </div>
-      
-      {/* Real-time connection status */}
-      <ConnectionStatus />
     </div>
   );
 };

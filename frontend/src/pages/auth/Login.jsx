@@ -29,20 +29,50 @@ const Login = () => {
     });
   };
 
+  const validateForm = () => {
+    // Check required fields
+    if (!email || !password) {
+      toast.error('Please fill in all required fields');
+      return false;
+    }
+
+    // Validate email format
+    const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Please enter a valid email address');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error('Please provide both email and password');
-      return;
-    }
+    
+    if (!validateForm()) return;
+
     try {
       setLoading(true);
       await login(email, password);
-      toast.success('Login successful!');
-      navigate('/dashboard'); // Redirect to dashboard
+      toast.success('Welcome back! Login successful');
+      navigate('/dashboard');
     } catch (error) {
-      toast.error(error.message || 'Login failed. Please check your credentials or try again.');
-      // Stay on the login page, do not redirect
+      // Handle specific error messages from backend
+      const errorMessage = error.message;
+      
+      if (errorMessage.includes('Account not found')) {
+        toast.error('Account not found. Please check your email or sign up');
+      } else if (errorMessage.includes('Incorrect password')) {
+        toast.error('Incorrect password. Please try again');
+      } else if (errorMessage.includes('valid email')) {
+        toast.error('Please enter a valid email address');
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        toast.error('Connection problem. Please check your internet and try again');
+      } else if (errorMessage.includes('server') || errorMessage.includes('500')) {
+        toast.error('Server temporarily unavailable. Please try again later');
+      } else {
+        toast.error('Login failed. Please check your credentials and try again');
+      }
     } finally {
       setLoading(false);
     }
@@ -60,10 +90,18 @@ const Login = () => {
       
       await socialLogin(provider, mockToken);
       
-      toast.success(`${provider} login successful!`);
+      toast.success(`Welcome! ${provider} login successful`);
       navigate('/');
     } catch (error) {
-      toast.error(error.message || `${provider} login failed. Please try again.`);
+      const errorMessage = error.message;
+      
+      if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        toast.error(`Connection problem. Please check your internet and try again`);
+      } else if (errorMessage.includes('server') || errorMessage.includes('500')) {
+        toast.error(`Server temporarily unavailable. Please try again later`);
+      } else {
+        toast.error(`${provider} login failed. Please try again`);
+      }
     } finally {
       setSocialLoading({...socialLoading, [provider]: false});
     }

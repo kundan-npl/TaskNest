@@ -412,18 +412,16 @@ const NotificationWidget = ({
       </div>
 
       {/* Filter Controls */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4 justify-center">
         {[
           { value: 'all', label: 'All', count: notifications.length },
           { value: 'unread', label: 'Unread', count: unreadCount },
-          { value: 'high', label: 'High Priority', count: notifications.filter(n => n.priority === 'high').length },
-          { value: 'medium', label: 'Medium', count: notifications.filter(n => n.priority === 'medium').length },
-          { value: 'low', label: 'Low', count: notifications.filter(n => n.priority === 'low').length }
+          { value: 'high', label: 'High Priority', count: notifications.filter(n => n.priority === 'high').length }
         ].map(({ value, label, count }) => (
           <button
             key={value}
             onClick={() => setFilter(value)}
-            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
               filter === value
                 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'

@@ -8,6 +8,40 @@ exports.register = async (req, res, next) => {
   try {
     const { name, email, password, department, jobTitle, phone } = req.body;
 
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please fill in all required fields (name, email, password)'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid email address'
+      });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'An account with this email already exists. Please log in instead'
+      });
+    }
+
     // Create user - everyone starts as a normal user
     // Only existing admins can promote users to admin
     const user = await User.create({
@@ -38,7 +72,28 @@ exports.register = async (req, res, next) => {
 
     sendTokenResponse(user, 201, res);
   } catch (err) {
-    next(err);
+    // Handle duplicate key error (email already exists)
+    if (err.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        error: 'An account with this email already exists. Please log in instead'
+      });
+    }
+    
+    // Handle validation errors
+    if (err.name === 'ValidationError') {
+      const message = Object.values(err.errors).map(val => val.message).join(', ');
+      return res.status(400).json({
+        success: false,
+        error: message
+      });
+    }
+
+    // Handle server errors
+    return res.status(500).json({
+      success: false,
+      error: 'Something went wrong on our end. Please try again later'
+    });
   }
 };
 
@@ -53,7 +108,16 @@ exports.login = async (req, res, next) => {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        error: 'Please provide an email and password'
+        error: 'Please enter both email and password'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid email address'
       });
     }
 
@@ -63,7 +127,7 @@ exports.login = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid credentials'
+        error: 'Account not found. Please check your email or sign up'
       });
     }
 
@@ -73,13 +137,17 @@ exports.login = async (req, res, next) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid credentials'
+        error: 'Incorrect password. Please try again'
       });
     }
 
     sendTokenResponse(user, 200, res);
   } catch (err) {
-    next(err);
+    // Handle server errors
+    return res.status(500).json({
+      success: false,
+      error: 'Something went wrong on our end. Please try again later'
+    });
   }
 };
 

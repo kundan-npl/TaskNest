@@ -9,6 +9,7 @@ import {
   TagIcon
 } from '@heroicons/react/24/outline';
 import TaskStatusBadge from '../common/TaskStatusBadge';
+import Avatar from '../common/Avatar';
 
 const EnhancedTaskCard = ({ 
   task, 
@@ -133,10 +134,9 @@ const EnhancedTaskCard = ({
             {showAssignee && task.assignedTo && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <UserIcon className="w-4 h-4 text-gray-400" />
-                <img 
-                  src={task.assignedTo.avatar} 
-                  alt={task.assignedTo.name}
-                  className="w-5 h-5 rounded-full"
+                <Avatar 
+                  user={task.assignedTo}
+                  size="sm"
                 />
                 <span className="truncate">{task.assignedTo.name}</span>
               </div>
@@ -213,10 +213,9 @@ const EnhancedTaskCard = ({
           </div>
           {showAssignee && task.assignedTo && (
             <div className="flex items-center gap-1">
-              <img 
-                src={task.assignedTo.avatar} 
-                alt={task.assignedTo.name}
-                className="w-4 h-4 rounded-full"
+              <Avatar 
+                user={task.assignedTo}
+                size="xs"
               />
               <span className="truncate max-w-20">{task.assignedTo.name}</span>
             </div>

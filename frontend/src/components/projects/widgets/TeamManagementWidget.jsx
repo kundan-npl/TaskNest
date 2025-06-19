@@ -5,6 +5,7 @@ import invitationService from '../../../services/invitationService';
 import { useSocket } from '../../../context/SocketContext';
 import SendInvitationModal from '../SendInvitationModal';
 import InvitationManagerWidget from '../InvitationManagerWidget';
+import Avatar from '../../common/Avatar';
 
 const TeamManagementWidget = ({ 
   members = [], 
@@ -485,10 +486,9 @@ const TeamManagementWidget = ({
                     onClick={() => openMemberDetails(member)}
                   >
                     <div className="relative">
-                      <img
-                        className="h-10 w-10 rounded-full object-cover"
-                        src={member.user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user?.name}`}
-                        alt={member.user?.name || 'User'}
+                      <Avatar 
+                        user={member.user}
+                        size="md"
                       />
                       {/* Online status indicator */}
                       <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 border-2 border-white dark:border-gray-700 rounded-full"></div>
@@ -641,14 +641,11 @@ const TeamManagementWidget = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
-              </div>
-              
-              <div className="space-y-4">
+              </div>                <div className="space-y-4">
                 <div className="flex items-center space-x-3">
-                  <img
-                    className="h-16 w-16 rounded-full object-cover"
-                    src={selectedMemberDetails.user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedMemberDetails.user?.name}`}
-                    alt={selectedMemberDetails.user?.name || 'User'}
+                  <Avatar 
+                    user={selectedMemberDetails.user}
+                    size="lg"
                   />
                   <div>
                     <h4 className="text-lg font-medium text-gray-900 dark:text-white">

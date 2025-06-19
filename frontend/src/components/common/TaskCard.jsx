@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import TaskStatusBadge from './TaskStatusBadge';
+import Avatar from './Avatar';
 
 const TaskCard = ({ 
   task, 
@@ -63,10 +64,10 @@ const TaskCard = ({
           <div className="flex items-center space-x-2">
             {showAssignee && task.assignedTo && (
               <div className="flex items-center">
-                <img 
-                  src={task.assignedTo.avatar} 
-                  alt={task.assignedTo.name}
-                  className="w-4 h-4 rounded-full mr-1"
+                <Avatar 
+                  user={task.assignedTo}
+                  size="xs"
+                  className="mr-1"
                 />
                 <span className="truncate max-w-20">{task.assignedTo.name}</span>
               </div>

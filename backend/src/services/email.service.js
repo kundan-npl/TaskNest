@@ -753,7 +753,7 @@ class EmailService {
                         <h2 style="color: #333; margin-top: 0;">Hi ${userName || 'there'}! 👋</h2>
                         <p style="font-size: 17px; margin-bottom: 20px;">Congratulations on joining TaskNest! We're excited to help you and your team achieve more together.</p>
                         
-                        <p style="font-size: 16px;">Your account has been created as a <span class="highlight">${accountType}</span>, and you now have access to:</p>
+                        <p style="font-size: 16px;">You now have access to all the powerful features that will help you manage projects efficiently:</p>
                         
                         <ul class="feature-list">
                             <li><strong>Project Management:</strong> Create and organize projects with ease</li>

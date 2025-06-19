@@ -334,17 +334,45 @@ exports.updateTask = async (req, res, next) => {
     const project = await Project.findById(projectId);
 
     // FIX: Use project.members, not project.team
-    const isTeamMember = project.members && Array.isArray(project.members)
-      ? project.members.some(member => member.user.toString() === req.user.id)
-      : false;
+    const userMember = getUserProjectRole(project, req.user.id);
+    
+    if (!userMember) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to access this project'
+      });
+    }
 
-    if (project.createdBy.toString() !== req.user.id && 
-        task.createdBy.toString() !== req.user.id && 
-        !isTeamMember) {
+    // General task update permissions (excluding status updates)
+    const canUpdateTask = project.createdBy.toString() === req.user.id || 
+                         task.createdBy.toString() === req.user.id || 
+                         userMember.role === 'supervisor' ||
+                         userMember.role === 'team-lead' ||
+                         userMember.permissions.canEditTasks;
+
+    if (!canUpdateTask) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to update this task'
       });
+    }
+
+    // Special check for status updates: only supervisor, team-lead, and assigned members can update status
+    if (req.body.status && req.body.status !== task.status) {
+      const isAssignedToTask = task.assignedTo && task.assignedTo.some(assignment => 
+        assignment.user.toString() === req.user.id
+      );
+      
+      const canUpdateStatus = userMember.role === 'supervisor' ||
+                             userMember.role === 'team-lead' ||
+                             isAssignedToTask;
+
+      if (!canUpdateStatus) {
+        return res.status(403).json({
+          success: false,
+          error: 'Only supervisors, team leads, and assigned members can update task status'
+        });
+      }
     }
     
     // Handle assignedTo field properly - preserve existing assignments if not provided
@@ -396,7 +424,7 @@ exports.updateTask = async (req, res, next) => {
         previousStatus !== 'done' && previousStatus !== 'completed') {
       
       try {
-        const emailService = new EmailService();
+        const emailService = require('../services/email.service');
         await emailService.initialize();
         
         // Send completion emails to project members and assigned users
@@ -449,6 +477,39 @@ exports.updateTask = async (req, res, next) => {
         console.error('Task completion email integration failed:', emailError);
         // Don't fail the task update if email fails
       }
+    }
+
+    // Create notifications for task completion
+    console.log(`[TaskCompletion] Checking status change: ${previousStatus} -> ${updateData.status}`);
+    if (updateData.status && 
+        (updateData.status === 'done' || updateData.status === 'completed') && 
+        previousStatus !== 'done' && previousStatus !== 'completed') {
+      
+      console.log(`[TaskCompletion] Creating completion notification for task: ${task.title}`);
+      try {
+        // For single-member projects, include the sender in notifications
+        // For multi-member projects, exclude the sender
+        const excludeList = project.members.length > 1 ? [req.user.id] : [];
+        
+        await notifyProjectMembers(projectId, {
+          type: 'task_completed',
+          title: 'Task Completed',
+          message: `Task "${task.title}" has been marked as completed`,
+          sender: req.user.id,
+          actionUrl: `/projects/${projectId}/tasks/${task._id}`,
+          metadata: {
+            taskTitle: task.title,
+            completedBy: req.user.name,
+            action: 'task_completed'
+          }
+        }, excludeList);
+        console.log(`[TaskCompletion] Successfully created notification for task completion`);
+      } catch (notificationError) {
+        console.error('Failed to send task completion notifications:', notificationError);
+        // Don't fail the request if notification fails
+      }
+    } else {
+      console.log(`[TaskCompletion] No notification created - conditions not met`);
     }
     
     // Emit real-time update for task update

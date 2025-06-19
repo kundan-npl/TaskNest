@@ -119,7 +119,7 @@ const AdminDashboardCards = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatsCard
               title="Response Time"
-              value={`${performanceMetrics.avgResponseTime || 245}ms`}
+              value={`${Math.round((performanceMetrics.avgResponseTime || 245) * 10) / 10}ms`}
               subtitle={performanceMetrics.responseTimeTrend === 'up' ? 'Improving' : 'Needs attention'}
               color={performanceMetrics.avgResponseTime < 300 ? 'green' : 'yellow'}
               trend={performanceMetrics.responseTimeTrend}
@@ -134,7 +134,7 @@ const AdminDashboardCards = ({
 
             <StatsCard
               title="System Uptime"
-              value={`${performanceMetrics.uptime || 99.9}%`}
+              value={`${Math.round((performanceMetrics.uptime || 99.9) * 100) / 100}%`}
               subtitle="This month"
               color="green"
               trend="up"
@@ -163,7 +163,7 @@ const AdminDashboardCards = ({
 
             <StatsCard
               title="Error Rate"
-              value={`${performanceMetrics.errorRate || 0.1}%`}
+              value={`${Math.round((performanceMetrics.errorRate || 0.1) * 100) / 100}%`}
               subtitle={performanceMetrics.errorRate > 1 ? 'Needs attention' : 'Excellent'}
               color={performanceMetrics.errorRate > 1 ? 'red' : 'green'}
               trend={performanceMetrics.errorRate > 1 ? 'down' : 'up'}

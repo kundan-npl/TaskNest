@@ -29,13 +29,42 @@ const Register = () => {
     });
   };
 
+  const validateForm = () => {
+    // Check required fields
+    if (!name || !email || !password || !passwordConfirm) {
+      toast.error('Please fill in all required fields');
+      return false;
+    }
+
+    // Validate email format
+    const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Please enter a valid email address');
+      return false;
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      toast.error('Password must be at least 6 characters long');
+      return false;
+    }
+
+    // Check if passwords match
+    if (password !== passwordConfirm) {
+      toast.error('Passwords do not match. Please check and try again');
+      return false;
+    }
+
+    return true;
+  };
+
   const validatePassword = () => {
     if (password.length < 6) {
       toast.error('Password must be at least 6 characters long');
       return false;
     }
     if (password !== passwordConfirm) {
-      toast.error('Passwords do not match');
+      toast.error('Passwords do not match. Please check and try again');
       return false;
     }
     return true;
@@ -43,14 +72,33 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validatePassword()) return;
+    
+    if (!validateForm()) return;
+
     try {
       setLoading(true);
       await register({ name, email, password });
-      toast.success('Registration successful!');
-      navigate('/dashboard'); // Redirect to dashboard
+      toast.success('Account created successfully! Welcome to TaskNest');
+      navigate('/dashboard');
     } catch (error) {
-      toast.error(error.message || 'Registration failed. Please check your credentials or try again.');
+      // Handle specific error messages from backend
+      const errorMessage = error.message;
+      
+      if (errorMessage.includes('email already exists') || errorMessage.includes('already exists')) {
+        toast.error('This email is already registered. Please log in instead');
+      } else if (errorMessage.includes('valid email')) {
+        toast.error('Please enter a valid email address');
+      } else if (errorMessage.includes('6 characters')) {
+        toast.error('Password must be at least 6 characters long');
+      } else if (errorMessage.includes('required fields')) {
+        toast.error('Please fill in all required fields');
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        toast.error('Connection problem. Please check your internet and try again');
+      } else if (errorMessage.includes('server') || errorMessage.includes('500')) {
+        toast.error('Server temporarily unavailable. Please try again later');
+      } else {
+        toast.error('Registration failed. Please check your information and try again');
+      }
     } finally {
       setLoading(false);
     }
@@ -72,10 +120,20 @@ const Register = () => {
       // Simulate getting a token from OAuth provider
       const mockToken = `mock-${provider}-token-${Date.now()}`;
       await socialLogin(provider, mockToken);
-      toast.success(`${provider} registration successful!`);
+      toast.success(`Welcome! ${provider} registration successful`);
       navigate('/');
     } catch (error) {
-      toast.error(error.message || `${provider} registration failed. Please try again.`);
+      const errorMessage = error.message;
+      
+      if (errorMessage.includes('email already exists') || errorMessage.includes('already exists')) {
+        toast.error(`This ${provider} account is already registered. Please log in instead`);
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        toast.error(`Connection problem. Please check your internet and try again`);
+      } else if (errorMessage.includes('server') || errorMessage.includes('500')) {
+        toast.error(`Server temporarily unavailable. Please try again later`);
+      } else {
+        toast.error(`${provider} registration failed. Please try again`);
+      }
     } finally {
       setSocialLoading({...socialLoading, [provider]: false});
     }

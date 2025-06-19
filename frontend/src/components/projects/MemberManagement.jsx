@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
+import Avatar from '../common/Avatar';
 
 const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
   const { currentUser } = useAuth();
@@ -177,9 +178,11 @@ const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
           return (
             <div key={member._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center">
-                <div className="w-10 h-10 rounded-full bg-primary-200 flex items-center justify-center text-primary-800 font-semibold mr-4">
-                  {member.user.name.charAt(0).toUpperCase()}
-                </div>
+                <Avatar 
+                  user={member.user}
+                  size="md"
+                  className="mr-4"
+                />
                 <div>
                   <div className="flex items-center">
                     <h3 className="text-sm font-medium text-gray-900 mr-2">

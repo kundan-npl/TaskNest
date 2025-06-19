@@ -12,7 +12,9 @@ const ProjectBasicInfo = ({ formData, handleChange, errors = {} }) => {
   const statusOptions = [
     { value: 'planning', label: 'Planning', color: 'text-blue-600', bg: 'bg-blue-100' },
     { value: 'active', label: 'Active', color: 'text-green-600', bg: 'bg-green-100' },
-    { value: 'on-hold', label: 'On Hold', color: 'text-yellow-600', bg: 'bg-yellow-100' }
+    { value: 'on-hold', label: 'On Hold', color: 'text-yellow-600', bg: 'bg-yellow-100' },
+    { value: 'completed', label: 'Completed', color: 'text-gray-600', bg: 'bg-gray-100' },
+    { value: 'cancelled', label: 'Cancelled', color: 'text-red-600', bg: 'bg-red-100' }
   ];
 
   return (

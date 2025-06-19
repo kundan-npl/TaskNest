@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import projectService from '../../../services/projectService';
 import { useSocket } from '../../../context/SocketContext';
+import { useAuth } from '../../../context/AuthContext';
 
 const TaskManagementWidget = ({ 
   tasks: propTasks = [], 
@@ -13,6 +14,7 @@ const TaskManagementWidget = ({
   onTaskDelete,
   className 
 }) => {
+  const { currentUser } = useAuth();
   const [tasks, setTasks] = useState(propTasks);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('board');
@@ -26,6 +28,62 @@ const TaskManagementWidget = ({
   });
 
   const { socket, isConnected } = useSocket();
+
+  // Function to check if current user can update task status
+  const canUpdateTaskStatus = (task = null) => {
+    if (!currentUser || !project) return false;
+    
+    // Find user's role in the project
+    const userMember = project.members?.find(member => {
+      const memberUserId = member.user?._id || member.user?.id || member.user;
+      const currentUserId = currentUser._id || currentUser.id;
+      return memberUserId === currentUserId;
+    });
+    
+    if (!userMember) return false;
+    
+    // Supervisors and team-leads can always update task status
+    if (userMember.role === 'supervisor' || userMember.role === 'team-lead') {
+      return true;
+    }
+    
+    // For specific tasks, check if user is assigned to that task
+    if (task && task.assignedTo) {
+      const isAssignedToTask = task.assignedTo.some(assignment => {
+        const assignedUserId = assignment.user?._id || assignment.user?.id || assignment.user;
+        const currentUserId = currentUser._id || currentUser.id;
+        return assignedUserId === currentUserId;
+      });
+      return isAssignedToTask;
+    }
+    
+    // For bulk operations, only supervisors and team-leads are allowed
+    return false;
+  };
+
+  // Function to check if user can update status for all selected tasks
+  const canUpdateSelectedTasksStatus = () => {
+    if (!canUpdateTaskStatus()) return false; // Basic role check first
+    
+    // For supervisors and team-leads, allow bulk operations
+    const userMember = project.members?.find(member => {
+      const memberUserId = member.user?._id || member.user?.id || member.user;
+      const currentUserId = currentUser._id || currentUser.id;
+      return memberUserId === currentUserId;
+    });
+    
+    if (userMember && (userMember.role === 'supervisor' || userMember.role === 'team-lead')) {
+      return true;
+    }
+    
+    // For team members, check if they are assigned to ALL selected tasks
+    if (selectedTasks.length === 0) return false;
+    
+    return selectedTasks.every(taskId => {
+      const task = tasks.find(t => t._id === taskId);
+      return canUpdateTaskStatus(task);
+    });
+  };
 
   // Update local state when prop changes
   useEffect(() => {
@@ -135,8 +193,22 @@ const TaskManagementWidget = ({
   };
 
   const handleTaskStatusChange = async (taskId, newStatus) => {
-    if (!permissions?.canAssignTasks && userRole === 'teamMember') {
-      toast.error('You do not have permission to update task status');
+    // Find the task to check assignment
+    const task = tasks.find(t => t._id === taskId);
+    const isAssignedToTask = task && task.assignedTo && task.assignedTo.some(assignment => {
+      const assignedUserId = assignment.user?._id || assignment.user?.id || assignment.user;
+      const currentUserId = currentUser?._id || currentUser?.id;
+      return assignedUserId === currentUserId;
+    });
+
+    // Check permissions: supervisor, team-lead, or assigned member can update status
+    const canUpdateStatus = userRole === 'supervisor' || 
+                           userRole === 'team-lead' || 
+                           userRole === 'teamLead' ||
+                           isAssignedToTask;
+
+    if (!canUpdateStatus) {
+      toast.error('Only supervisors, team leads, and assigned members can update task status');
       return;
     }
 
@@ -168,8 +240,23 @@ const TaskManagementWidget = ({
   };
 
   const handleBulkStatusUpdate = async (status) => {
-    if (!permissions?.canAssignTasks && userRole === 'teamMember') {
-      toast.error('You do not have permission to update task status');
+    // Check if user can update status for all selected tasks
+    const selectedTaskObjects = tasks.filter(t => selectedTasks.includes(t._id));
+    const canUpdateAllTasks = selectedTaskObjects.every(task => {
+      const isAssignedToTask = task.assignedTo && task.assignedTo.some(assignment => {
+        const assignedUserId = assignment.user?._id || assignment.user?.id || assignment.user;
+        const currentUserId = currentUser?._id || currentUser?.id;
+        return assignedUserId === currentUserId;
+      });
+
+      return userRole === 'supervisor' || 
+             userRole === 'team-lead' || 
+             userRole === 'teamLead' ||
+             isAssignedToTask;
+    });
+
+    if (!canUpdateAllTasks) {
+      toast.error('You can only update status for tasks assigned to you or if you are a supervisor/team lead');
       return;
     }
 
@@ -304,7 +391,7 @@ const TaskManagementWidget = ({
         
         <div className="flex items-center space-x-2">
           {/* Bulk Actions */}
-          {selectedTasks.length > 0 && (
+          {selectedTasks.length > 0 && canUpdateSelectedTasksStatus() && (
             <div className="flex items-center space-x-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <button
                 onClick={() => setShowBulkActions(!showBulkActions)}
