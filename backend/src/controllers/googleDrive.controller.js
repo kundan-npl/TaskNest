@@ -120,7 +120,7 @@ exports.listFiles = async (req, res) => {
     
     const result = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
-      fields: 'files(id, name, mimeType, modifiedTime, size, webViewLink, iconLink, thumbnailLink, downloadUrl, parents)',
+      fields: 'files(id, name, mimeType, modifiedTime, size, webViewLink, webContentLink, iconLink, thumbnailLink, parents)',
       orderBy: 'modifiedTime desc'
     });
     
