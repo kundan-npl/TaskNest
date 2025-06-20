@@ -84,7 +84,7 @@ router.get('/:id/activity', getProjectActivity);
 router.get('/:id/members', getProjectMembers);
 router.post('/:id/members', addMember);
 router.post('/:id/invite', inviteMember);
-router.put('/:id/members/:memberId', updateMemberRole);
+router.put('/:id/members/:memberId/role', updateMemberRole);
 router.delete('/:id/members/:memberId', removeMember);
 
 // Invitation management routes
