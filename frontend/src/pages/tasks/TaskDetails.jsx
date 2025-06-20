@@ -122,14 +122,14 @@ const TaskDetails = () => {
 
     const isValidTaskId = currentTaskId && typeof currentTaskId === 'string' && currentTaskId !== "undefined" && currentTaskId !== "";
 
-    if (!isValidTaskId) {
+    if (!isValidTaskId || !task?.projectId) {
       setLoadingFiles(false); // Ensure loading is stopped
       return;
     }
     
     try {
       setLoadingFiles(true);
-      const files = await fileService.listFiles({ taskId: currentTaskId });
+      const files = await googleDriveService.listTaskFiles(task.projectId, currentTaskId);
       setTaskFiles(files);
     } catch (error) {
       console.error('Error fetching task files:', error);

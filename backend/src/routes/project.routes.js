@@ -43,9 +43,9 @@ router.use('/:projectId/milestones', milestoneRouter);
 const communicationRouter = require('./communication.routes');
 router.use('/:projectId/messages', communicationRouter);
 
-// File routes
-const fileRouter = require('./file.routes');
-router.use('/:projectId/files', fileRouter);
+// File routes - Disabled (Using Google Drive instead)
+// const fileRouter = require('./file.routes');
+// router.use('/:projectId/files', fileRouter);
 
 // Notification routes for projects
 const { 

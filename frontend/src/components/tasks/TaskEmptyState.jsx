@@ -30,7 +30,7 @@ const TaskEmptyState = ({
             Clear All Filters
           </button>
           <Link
-            to="/projects"
+            to="/tasks/create"
             className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
@@ -67,7 +67,7 @@ const TaskEmptyState = ({
           </Link>
           
           <Link
-            to="/projects/create"
+            to="/tasks/create"
             className="inline-flex items-center gap-2 px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
           >
             <PlusIcon className="w-5 h-5" />

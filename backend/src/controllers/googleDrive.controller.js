@@ -1,5 +1,6 @@
 // backend/src/controllers/googleDrive.controller.js
 const { google } = require('googleapis');
+const ProjectDriveToken = require('../models/projectDriveToken.model');
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -17,13 +18,31 @@ const oauth2Client = new google.auth.OAuth2(
   REDIRECT_URI
 );
 
-// In-memory store for demo (replace with DB in production)
-const projectDriveTokens = {};
+// Helper function to set credentials and handle token refresh
+const setCredentialsWithRefresh = async (projectId, oauth2Client, tokens) => {
+  oauth2Client.setCredentials(tokens);
+  
+  // Set up token refresh handler
+  oauth2Client.on('tokens', async (newTokens) => {
+    try {
+      console.log('New tokens received, updating database for project:', projectId);
+      const updatedTokens = { ...tokens, ...newTokens };
+      await ProjectDriveToken.storeTokens(projectId, updatedTokens);
+    } catch (error) {
+      console.error('Failed to store refreshed tokens:', error);
+    }
+  });
+};
 
-exports.getDriveStatus = (req, res) => {
+exports.getDriveStatus = async (req, res) => {
   const { projectId } = req.params;
-  const tokens = projectDriveTokens[projectId];
-  res.json({ connected: !!tokens });
+  try {
+    const tokenRecord = await ProjectDriveToken.findByProjectId(projectId);
+    res.json({ connected: !!tokenRecord });
+  } catch (error) {
+    console.error('Error checking drive status:', error);
+    res.json({ connected: false });
+  }
 };
 
 exports.getAuthUrl = (req, res) => {
@@ -53,8 +72,10 @@ exports.oauthCallback = async (req, res) => {
   try {
     const { tokens } = await oauth2Client.getToken(code);
     console.log('OAuth tokens received successfully for project:', state);
-    // Store tokens for the project (replace with DB in production)
-    projectDriveTokens[state] = tokens;
+    
+    // Store tokens in database
+    await ProjectDriveToken.storeTokens(state, tokens);
+    console.log('Tokens stored in database for project:', state);
     
     // Create TaskNest folder in Drive for this project
     await createTaskNestFolder(state, tokens);
@@ -71,17 +92,31 @@ exports.oauthCallback = async (req, res) => {
 
 exports.listFiles = async (req, res) => {
   const { projectId } = req.params;
-  const tokens = projectDriveTokens[projectId];
-  if (!tokens) return res.status(400).json({ success: false, error: 'Drive not linked' });
-  
-  oauth2Client.setCredentials(tokens);
-  const drive = google.drive({ version: 'v3', auth: oauth2Client });
+  const { taskId } = req.query; // Support task-specific file listing
   
   try {
-    console.log('Fetching Google Drive files for project:', projectId);
+    const tokenRecord = await ProjectDriveToken.findByProjectId(projectId);
+    if (!tokenRecord) {
+      return res.status(400).json({ success: false, error: 'Drive not linked' });
+    }
     
-    // Get the TaskNest folder for this project
-    const folderId = await getOrCreateTaskNestFolder(projectId, tokens);
+    const tokens = tokenRecord.getTokens();
+    if (!tokens) {
+      return res.status(400).json({ success: false, error: 'Invalid stored tokens' });
+    }
+    
+    await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    
+    console.log('Fetching Google Drive files for project:', projectId, taskId ? `task: ${taskId}` : '(project-level)');
+    
+    // Get the appropriate folder - either task-specific or project-level
+    let folderId;
+    if (taskId) {
+      folderId = await getOrCreateTaskFolder(projectId, taskId, tokens);
+    } else {
+      folderId = await getOrCreateTaskNestFolder(projectId, tokens);
+    }
     
     const result = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
@@ -89,31 +124,67 @@ exports.listFiles = async (req, res) => {
       orderBy: 'modifiedTime desc'
     });
     
+    // Update last used timestamp
+    await tokenRecord.updateLastUsed();
+    
     console.log('Google Drive files fetched successfully:', result.data.files?.length || 0, 'files');
     res.json({ success: true, files: result.data.files || [] });
   } catch (err) {
     console.error('Google Drive files fetch error:', err.message, err.code);
+    
+    // Provide specific error messages for common issues
+    if (err.code === 403 && err.message.includes('Drive API has not been used')) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Google Drive API is not enabled. Please enable it in Google Cloud Console.',
+        details: 'Visit Google Cloud Console > APIs & Services > Library > Enable Google Drive API',
+        actionRequired: true
+      });
+    }
+    
+    if (err.code === 401) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Google Drive authentication expired. Please reconnect.',
+        actionRequired: true
+      });
+    }
+    
     res.status(500).json({ success: false, error: 'Failed to list Google Drive files', details: err.message });
   }
 };
 
 exports.uploadFile = async (req, res) => {
   const { projectId } = req.params;
-  const tokens = projectDriveTokens[projectId];
-  if (!tokens) return res.status(400).json({ success: false, error: 'Drive not linked' });
-  
-  oauth2Client.setCredentials(tokens);
-  const drive = google.drive({ version: 'v3', auth: oauth2Client });
+  const { taskId } = req.body; // Support task-specific file uploads
   
   try {
-    console.log('Uploading file to Google Drive for project:', projectId);
+    const tokenRecord = await ProjectDriveToken.findByProjectId(projectId);
+    if (!tokenRecord) {
+      return res.status(400).json({ success: false, error: 'Drive not linked' });
+    }
+    
+    const tokens = tokenRecord.getTokens();
+    if (!tokens) {
+      return res.status(400).json({ success: false, error: 'Invalid stored tokens' });
+    }
+    
+    await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    
+    console.log('Uploading file to Google Drive for project:', projectId, taskId ? `task: ${taskId}` : '(project-level)');
     
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file provided' });
     }
     
-    // Get the TaskNest folder for this project
-    const folderId = await getOrCreateTaskNestFolder(projectId, tokens);
+    // Get the appropriate folder - either task-specific or project-level
+    let folderId;
+    if (taskId) {
+      folderId = await getOrCreateTaskFolder(projectId, taskId, tokens);
+    } else {
+      folderId = await getOrCreateTaskNestFolder(projectId, tokens);
+    }
     
     const fileMetadata = {
       name: req.file.originalname,
@@ -135,22 +206,52 @@ exports.uploadFile = async (req, res) => {
     res.json({ success: true, file: result.data });
   } catch (err) {
     console.error('Google Drive upload error:', err.message, err.code);
+    
+    // Provide specific error messages for common issues
+    if (err.code === 403 && err.message.includes('Drive API has not been used')) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Google Drive API is not enabled. Please enable it in Google Cloud Console.',
+        details: 'Visit Google Cloud Console > APIs & Services > Library > Enable Google Drive API',
+        actionRequired: true
+      });
+    }
+    
+    if (err.code === 401) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Google Drive authentication expired. Please reconnect.',
+        actionRequired: true
+      });
+    }
+    
     res.status(500).json({ success: false, error: 'Failed to upload file to Google Drive', details: err.message });
   }
 };
 
 exports.deleteFile = async (req, res) => {
   const { projectId, fileId } = req.params;
-  const tokens = projectDriveTokens[projectId];
-  if (!tokens) return res.status(400).json({ success: false, error: 'Drive not linked' });
-  
-  oauth2Client.setCredentials(tokens);
-  const drive = google.drive({ version: 'v3', auth: oauth2Client });
   
   try {
+    const tokenRecord = await ProjectDriveToken.findByProjectId(projectId);
+    if (!tokenRecord) {
+      return res.status(400).json({ success: false, error: 'Drive not linked' });
+    }
+    
+    const tokens = tokenRecord.getTokens();
+    if (!tokens) {
+      return res.status(400).json({ success: false, error: 'Invalid stored tokens' });
+    }
+    
+    await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    
     console.log('Deleting file from Google Drive:', fileId);
     
     await drive.files.delete({ fileId });
+    
+    // Update last used timestamp
+    await tokenRecord.updateLastUsed();
     
     console.log('File deleted successfully:', fileId);
     res.json({ success: true, message: 'File deleted successfully' });
@@ -162,13 +263,21 @@ exports.deleteFile = async (req, res) => {
 
 exports.downloadFile = async (req, res) => {
   const { projectId, fileId } = req.params;
-  const tokens = projectDriveTokens[projectId];
-  if (!tokens) return res.status(400).json({ success: false, error: 'Drive not linked' });
-  
-  oauth2Client.setCredentials(tokens);
-  const drive = google.drive({ version: 'v3', auth: oauth2Client });
   
   try {
+    const tokenRecord = await ProjectDriveToken.findByProjectId(projectId);
+    if (!tokenRecord) {
+      return res.status(400).json({ success: false, error: 'Drive not linked' });
+    }
+    
+    const tokens = tokenRecord.getTokens();
+    if (!tokens) {
+      return res.status(400).json({ success: false, error: 'Invalid stored tokens' });
+    }
+    
+    await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    
     console.log('Getting download link for file:', fileId);
     
     // Get file metadata first
@@ -176,6 +285,9 @@ exports.downloadFile = async (req, res) => {
       fileId: fileId,
       fields: 'name, mimeType, webViewLink, webContentLink'
     });
+    
+    // Update last used timestamp
+    await tokenRecord.updateLastUsed();
     
     // For Google Docs, Sheets, Slides, we need to export them
     if (fileMetadata.data.mimeType.includes('application/vnd.google-apps')) {
@@ -203,7 +315,7 @@ exports.downloadFile = async (req, res) => {
 
 // Helper function to create TaskNest folder
 const createTaskNestFolder = async (projectId, tokens) => {
-  oauth2Client.setCredentials(tokens);
+  await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
   const drive = google.drive({ version: 'v3', auth: oauth2Client });
   
   try {
@@ -227,7 +339,7 @@ const createTaskNestFolder = async (projectId, tokens) => {
 
 // Helper function to get or create TaskNest folder
 const getOrCreateTaskNestFolder = async (projectId, tokens) => {
-  oauth2Client.setCredentials(tokens);
+  await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
   const drive = google.drive({ version: 'v3', auth: oauth2Client });
   
   try {
@@ -249,5 +361,68 @@ const getOrCreateTaskNestFolder = async (projectId, tokens) => {
   } catch (err) {
     console.error('Error getting/creating TaskNest folder:', err);
     throw err;
+  }
+};
+
+// Helper function to get or create task-specific folder
+const getOrCreateTaskFolder = async (projectId, taskId, tokens) => {
+  await setCredentialsWithRefresh(projectId, oauth2Client, tokens);
+  const drive = google.drive({ version: 'v3', auth: oauth2Client });
+  
+  try {
+    // First get the main TaskNest folder
+    const projectFolderId = await getOrCreateTaskNestFolder(projectId, tokens);
+    
+    // Search for existing task folder
+    const taskFolderName = `Task ${taskId}`;
+    const result = await drive.files.list({
+      q: `name='${taskFolderName}' and mimeType='application/vnd.google-apps.folder' and '${projectFolderId}' in parents and trashed=false`,
+      fields: 'files(id, name)'
+    });
+    
+    if (result.data.files && result.data.files.length > 0) {
+      console.log('Found existing task folder:', result.data.files[0].id);
+      return result.data.files[0].id;
+    } else {
+      // Create new task folder
+      console.log('Creating new task folder for project:', projectId, 'task:', taskId);
+      const folderMetadata = {
+        name: taskFolderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [projectFolderId]
+      };
+      
+      const folder = await drive.files.create({
+        resource: folderMetadata,
+        fields: 'id'
+      });
+      
+      console.log('Created task folder:', folder.data.id);
+      return folder.data.id;
+    }
+  } catch (err) {
+    console.error('Error getting/creating task folder:', err);
+    throw err;
+  }
+};
+
+exports.unlinkDrive = async (req, res) => {
+  const { projectId } = req.params;
+  
+  try {
+    console.log('Unlinking Google Drive for project:', projectId);
+    
+    // Remove tokens from database
+    const result = await ProjectDriveToken.removeTokens(projectId);
+    
+    if (result.deletedCount > 0) {
+      console.log('Google Drive unlinked successfully for project:', projectId);
+      res.json({ success: true, message: 'Google Drive unlinked successfully' });
+    } else {
+      res.status(404).json({ success: false, error: 'No Google Drive connection found' });
+    }
+  } catch (err) {
+    console.error('Google Drive unlink error:', err);
+    res.status(500).json({ success: false, error: 'Failed to unlink Google Drive', details: err.message });
   }
 };

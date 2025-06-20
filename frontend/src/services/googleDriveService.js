@@ -40,7 +40,11 @@ const googleDriveService = {
       const response = await api.get(`/projects/${projectId}/drive/files`);
       return response.data.files || [];
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Failed to fetch files from Google Drive');
+      // Handle specific API errors
+      if (error.response?.data?.actionRequired) {
+        throw new Error(error.response.data.error + '. Please check your Google Cloud Console settings.');
+      }
+      throw new Error(error.response?.data?.error || 'Failed to list Google Drive files');
     }
   },
 
@@ -70,6 +74,10 @@ const googleDriveService = {
 
       return response.data.file;
     } catch (error) {
+      // Handle specific API errors
+      if (error.response?.data?.actionRequired) {
+        throw new Error(error.response.data.error + '. Please check your Google Cloud Console settings.');
+      }
       throw new Error(error.response?.data?.error || 'Failed to upload file to Google Drive');
     }
   },
@@ -246,7 +254,76 @@ const googleDriveService = {
    */
   isGoogleApp: (mimeType) => {
     return mimeType && mimeType.startsWith('application/vnd.google-apps');
-  }
+  },
+
+  /**
+   * Unlink Google Drive from a project
+   * @param {string} projectId - Project ID
+   * @returns {Promise<boolean>} - Success status
+   */
+  unlinkDrive: async (projectId) => {
+    try {
+      await api.delete(`/projects/${projectId}/drive/unlink`);
+      return true;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to unlink Google Drive');
+    }
+  },
+
+  /**
+   * List files for a specific task
+   * @param {string} projectId - Project ID
+   * @param {string} taskId - Task ID
+   * @returns {Promise<Array>} - List of task files
+   */
+  listTaskFiles: async (projectId, taskId) => {
+    try {
+      const response = await api.get(`/projects/${projectId}/drive/files?taskId=${taskId}`);
+      return response.data.files || [];
+    } catch (error) {
+      // Handle specific API errors
+      if (error.response?.data?.actionRequired) {
+        throw new Error(error.response.data.error + '. Please check your Google Cloud Console settings.');
+      }
+      throw new Error(error.response?.data?.error || 'Failed to list task files from Google Drive');
+    }
+  },
+
+  /**
+   * Upload a file for a specific task
+   * @param {string} projectId - Project ID
+   * @param {string} taskId - Task ID
+   * @param {File} file - File to upload
+   * @param {function} onProgress - Progress callback
+   * @returns {Promise<Object>} - Upload result
+   */
+  uploadTaskFile: async (projectId, taskId, file, onProgress = () => {}) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('taskId', taskId);
+
+      const response = await api.post(`/projects/${projectId}/drive/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.lengthComputable) {
+            const percentComplete = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+            onProgress(percentComplete);
+          }
+        }
+      });
+
+      return response.data.file;
+    } catch (error) {
+      // Handle specific API errors
+      if (error.response?.data?.actionRequired) {
+        throw new Error(error.response.data.error + '. Please check your Google Cloud Console settings.');
+      }
+      throw new Error(error.response?.data?.error || 'Failed to upload task file to Google Drive');
+    }
+  },
 };
 
 export default googleDriveService;

@@ -40,5 +40,6 @@ router.get('/projects/:projectId/drive/files', googleDriveController.listFiles);
 router.post('/projects/:projectId/drive/upload', upload.single('file'), googleDriveController.uploadFile);
 router.delete('/projects/:projectId/drive/files/:fileId', googleDriveController.deleteFile);
 router.get('/projects/:projectId/drive/files/:fileId/download', googleDriveController.downloadFile);
+router.delete('/projects/:projectId/drive/unlink', googleDriveController.unlinkDrive);
 
 module.exports = router;

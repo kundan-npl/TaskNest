@@ -84,14 +84,26 @@ const FileUploader = ({ onUpload, onClose, multiple = false, allowedTypes = '*',
         setUploadProgress(prev => ({ ...prev, [fileId]: 0 }));
         
         try {
-          // Upload to Google Drive
-          const uploadedFile = await googleDriveService.uploadFile(
-            projectId,
-            file,
-            (progress) => {
-              setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
-            }
-          );
+          // Upload to Google Drive - use task-specific method if taskId is provided
+          let uploadedFile;
+          if (taskId) {
+            uploadedFile = await googleDriveService.uploadTaskFile(
+              projectId,
+              taskId,
+              file,
+              (progress) => {
+                setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
+              }
+            );
+          } else {
+            uploadedFile = await googleDriveService.uploadFile(
+              projectId,
+              file,
+              (progress) => {
+                setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
+              }
+            );
+          }
           
           uploadedFiles.push({
             _id: uploadedFile.id,
