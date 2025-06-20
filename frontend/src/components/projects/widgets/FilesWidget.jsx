@@ -21,6 +21,19 @@ const FilesWidget = ({
   const fileInputRef = useRef(null);
 
   const isProjectCreator = userRole === 'owner' || userRole === 'creator' || userRole === 'supervisor';
+  
+  // Check if user can upload files - fallback to true for all members if permissions not properly set
+  const canUploadFiles = permissions?.canManageFiles !== undefined 
+    ? permissions.canManageFiles 
+    : (userRole && userRole !== 'viewer'); // Allow upload for all roles except viewer
+    
+  // Debug logging
+  console.log('FilesWidget Debug:', {
+    userRole,
+    permissions,
+    canUploadFiles,
+    permissionsCanManageFiles: permissions?.canManageFiles
+  });
 
   // Check if Google Drive is connected
   useEffect(() => {
@@ -112,8 +125,8 @@ const FilesWidget = ({
   };
 
   const handleFileUpload = async (files) => {
-    // Check if user has permission to manage files (all members should have this permission)
-    if (!permissions?.canManageFiles) {
+    // Check if user has permission to upload files
+    if (!canUploadFiles) {
       toast.error('You do not have permission to upload files');
       return;
     }
@@ -236,6 +249,11 @@ const FilesWidget = ({
     file.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Debug permissions
+  console.log('FilesWidget permissions:', permissions);
+  console.log('Can manage files:', permissions?.canManageFiles);
+  console.log('User role:', userRole);
+
   // If Google Drive is not connected, show connection UI
   if (!googleDriveConnected) {
     return (
@@ -329,7 +347,7 @@ const FilesWidget = ({
           </div>
 
           {/* Upload Button */}
-          {permissions?.canManageFiles && (
+          {canUploadFiles && (
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -447,7 +465,7 @@ const FilesWidget = ({
           <p className="text-gray-500 mb-4">
             {searchTerm ? 'No files match your search.' : 'Upload files to get started.'}
           </p>
-          {isProjectCreator && !searchTerm && (
+          {canUploadFiles && !searchTerm && (
             <button
               onClick={() => fileInputRef.current?.click()}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"

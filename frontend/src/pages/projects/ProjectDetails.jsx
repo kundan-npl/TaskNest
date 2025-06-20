@@ -400,6 +400,7 @@ const ProjectDetails = () => {
               project={project}
               userRole={userRole}
               permissions={{
+                canManageFiles: checkPermission('canManageFiles'),
                 canManage: checkPermission('canManageFiles'),
                 canUpload: checkPermission('canManageFiles'),
                 canDelete: checkPermission('canManageFiles')
