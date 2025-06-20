@@ -26,14 +26,6 @@ const FilesWidget = ({
   const canUploadFiles = permissions?.canManageFiles !== undefined 
     ? permissions.canManageFiles 
     : (userRole && userRole !== 'viewer'); // Allow upload for all roles except viewer
-    
-  // Debug logging
-  console.log('FilesWidget Debug:', {
-    userRole,
-    permissions,
-    canUploadFiles,
-    permissionsCanManageFiles: permissions?.canManageFiles
-  });
 
   // Check if Google Drive is connected
   useEffect(() => {
@@ -94,6 +86,19 @@ const FilesWidget = ({
   }, [showOptionsMenu]);
 
   const handleConnectGoogleDrive = async () => {
+    // Show under development message
+    toast.info('🚧 Google Drive integration is currently under development. This feature will be available soon!', {
+      position: "top-center",
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+    return;
+    
+    // Original code preserved for future use
+    /*
     if (!project?._id && !project?.id) return;
     try {
       const authUrl = await googleDriveService.getAuthUrl(project._id || project.id);
@@ -102,6 +107,7 @@ const FilesWidget = ({
       console.error('Failed to get auth URL:', err);
       toast.error('Failed to connect Google Drive');
     }
+    */
   };
 
   const handleUnlinkGoogleDrive = async () => {

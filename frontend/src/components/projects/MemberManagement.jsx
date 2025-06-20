@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import Avatar from '../common/Avatar';
+import projectService from '../../services/projectService';
 
 const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
   const { currentUser } = useAuth();
@@ -80,24 +81,17 @@ const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
     }
 
     try {
-      const response = await fetch(`/api/v1/projects/${project._id}/members/${memberId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ role: newRole })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update member role');
+      const response = await projectService.updateMemberRole(project._id, memberId, newRole);
+      
+      if (response.success) {
+        toast.success('Member role updated successfully');
+        onMemberUpdate();
+      } else {
+        throw new Error('Failed to update member role');
       }
-
-      toast.success('Member role updated successfully');
-      onMemberUpdate();
     } catch (error) {
-      toast.error(error.message);
+      console.error('Error updating member role:', error);
+      toast.error(error.message || 'Failed to update member role');
     }
   };
 
@@ -112,22 +106,17 @@ const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
     }
 
     try {
-      const response = await fetch(`/api/v1/projects/${project._id}/members/${memberId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to remove member');
+      const response = await projectService.removeMember(project._id, memberId);
+      
+      if (response.success) {
+        toast.success('Member removed successfully');
+        onMemberUpdate();
+      } else {
+        throw new Error('Failed to remove member');
       }
-
-      toast.success('Member removed successfully');
-      onMemberUpdate();
     } catch (error) {
-      toast.error(error.message);
+      console.error('Error removing member:', error);
+      toast.error(error.message || 'Failed to remove member');
     }
   };
 
@@ -204,7 +193,7 @@ const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
                 <div className="flex items-center space-x-2">
                   <select
                     value={member.role}
-                    onChange={(e) => handleUpdateMemberRole(member._id, e.target.value)}
+                    onChange={(e) => handleUpdateMemberRole(member.user?._id || member.user, e.target.value)}
                     className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:ring-primary-500 focus:border-primary-500"
                   >
                     {projectRoles.map(role => (
@@ -214,7 +203,7 @@ const MemberManagement = ({ project, userRole, onMemberUpdate }) => {
                     ))}
                   </select>
                   <button
-                    onClick={() => handleRemoveMember(member._id)}
+                    onClick={() => handleRemoveMember(member.user?._id || member.user)}
                     className="text-red-600 hover:text-red-800 text-sm font-medium"
                   >
                     Remove

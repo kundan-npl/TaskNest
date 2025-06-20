@@ -881,9 +881,12 @@ exports.updateMemberRole = async (req, res, next) => {
     const { id: projectId, memberId } = req.params;
     const { role } = req.body;
 
+    console.log('updateMemberRole called with:', { projectId, memberId, role });
+
     const project = await Project.findById(projectId);
 
     if (!project) {
+      console.log('Project not found:', projectId);
       return res.status(404).json({
         success: false,
         error: 'Project not found'
@@ -892,23 +895,32 @@ exports.updateMemberRole = async (req, res, next) => {
 
     const userMember = getUserProjectRole(project, req.user.id);
     if (!userMember || userMember.role !== 'supervisor') {
+      console.log('Permission denied. User role:', userMember?.role);
       return res.status(403).json({
         success: false,
         error: 'Only supervisors can change member roles'
       });
     }
 
+    console.log('Project members:', project.members.map(m => ({
+      id: m.user._id || m.user,
+      role: m.role
+    })));
+
     const memberToUpdate = project.members.find(m => 
       (m.user._id || m.user).toString() === memberId
     );
 
     if (!memberToUpdate) {
+      console.log('Member not found. Looking for:', memberId);
+      console.log('Available member IDs:', project.members.map(m => (m.user._id || m.user).toString()));
       return res.status(404).json({
         success: false,
         error: 'Member not found in project'
       });
     }
 
+    console.log('Updating member role from', memberToUpdate.role, 'to', role);
     memberToUpdate.role = role;
     await project.save();
     await project.populate('members.user', 'name email department jobTitle');
@@ -927,6 +939,7 @@ exports.updateMemberRole = async (req, res, next) => {
       data: project
     });
   } catch (error) {
+    console.error('Error in updateMemberRole:', error);
     next(error);
   }
 };

@@ -174,12 +174,22 @@ const projectService = {
   },
 
   // Update member role
-  updateMemberRole: async (projectId, memberId, roleData) => {
+  updateMemberRole: async (projectId, memberId, role) => {
     try {
-      const response = await api.put(`/projects/${projectId}/members/${memberId}/role`, roleData);
-      return response.data.data;
+      const response = await api.put(`/projects/${projectId}/members/${memberId}/role`, { role });
+      return response.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to update member role');
+    }
+  },
+
+  // Remove member
+  removeMember: async (projectId, memberId) => {
+    try {
+      const response = await api.delete(`/projects/${projectId}/members/${memberId}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to remove member');
     }
   },
 
@@ -264,15 +274,6 @@ const projectService = {
       return response.data.data || response.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Failed to add member');
-    }
-  },
-
-  updateMemberRole: async (projectId, memberId, role) => {
-    try {
-      const response = await api.put(`/projects/${projectId}/members/${memberId}/role`, { role });
-      return response.data.data || response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.error || 'Failed to update member role');
     }
   },
 

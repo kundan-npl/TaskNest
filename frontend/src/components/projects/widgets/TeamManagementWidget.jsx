@@ -147,13 +147,13 @@ const TeamManagementWidget = ({
     try {
       const response = await projectService.updateMemberRole(
         project._id, 
-        selectedMember._id, 
+        selectedMember.user?._id || selectedMember.user, 
         selectedRole
       );
 
       if (response.success) {
         toast.success('Role updated successfully');
-        onRoleChange?.(selectedMember._id, selectedRole);
+        onRoleChange?.(selectedMember.user?._id || selectedMember.user, selectedRole);
         setShowRoleModal(false);
         setSelectedMember(null);
         loadTeamStats(); // Refresh stats
