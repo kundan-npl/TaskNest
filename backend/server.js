@@ -109,7 +109,7 @@ const authRoutes = require('./src/routes/auth.routes');
 const userRoutes = require('./src/routes/user.routes');
 const projectRoutes = require('./src/routes/project.routes');
 const taskRoutes = require('./src/routes/task.routes');
-const fileRoutes = require('./src/routes/file.routes');
+// const fileRoutes = require('./src/routes/file.routes'); // Disabled - Using Google Drive instead
 const notificationRoutes = require('./src/routes/notification.routes');
 const discussionRoutes = require('./src/routes/discussion.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
@@ -121,7 +121,7 @@ app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/projects`, projectRoutes);
 app.use(`${API_PREFIX}/tasks`, taskRoutes);
-app.use(`${API_PREFIX}/files`, fileRoutes);
+// app.use(`${API_PREFIX}/files`, fileRoutes); // Disabled - Using Google Drive instead
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/discussions`, discussionRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);

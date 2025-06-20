@@ -3,7 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import projectService from '../../services/projectService';
 import taskService from '../../services/taskService';
-import fileService from '../../services/fileService';
 import discussionService from '../../services/discussionService';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useSocket } from '../../context/SocketContext.jsx';
@@ -36,7 +35,6 @@ const ProjectDetails = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   
   // Data collections
-  const [projectFiles, setProjectFiles] = useState([]);
   const [discussions, setDiscussions] = useState([]);
   const [milestones, setMilestones] = useState([]);
   
@@ -84,15 +82,6 @@ const ProjectDetails = () => {
       toast.error(error.message || 'Failed to load project data');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchProjectFiles = async () => {
-    try {
-      const response = await fileService.getProjectFiles(id);
-      setProjectFiles(response.data);
-    } catch (error) {
-      console.error('Error fetching project files:', error);
     }
   };
 
@@ -170,17 +159,6 @@ const ProjectDetails = () => {
     toast.success('Role updated successfully');
   };
 
-  // File management handlers
-  const handleFileUpload = (newFile) => {
-    setProjectFiles(prevFiles => [...prevFiles, newFile]);
-    toast.success('File uploaded successfully');
-  };
-
-  const handleFileDelete = (fileId) => {
-    setProjectFiles(prevFiles => prevFiles.filter(file => file._id !== fileId));
-    toast.success('File deleted successfully');
-  };
-
   // Communication handlers
   const handleMessageSend = (message) => {
     // Handle message sending logic
@@ -208,7 +186,6 @@ const ProjectDetails = () => {
 
   useEffect(() => {
     if (project) {
-      fetchProjectFiles();
       fetchDiscussions();
       fetchMilestones();
     }
@@ -420,7 +397,6 @@ const ProjectDetails = () => {
           {/* Files Widget */}
           <div>
             <FilesWidget
-              files={projectFiles}
               project={project}
               userRole={userRole}
               permissions={{
@@ -428,8 +404,6 @@ const ProjectDetails = () => {
                 canUpload: checkPermission('canManageFiles'),
                 canDelete: checkPermission('canManageFiles')
               }}
-              onFileUpload={handleFileUpload}
-              onFileDelete={handleFileDelete}
               className="widget-card h-full"
             />
           </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import taskService from '../../services/taskService';
-import fileService from '../../services/fileService';
+import googleDriveService from '../../services/googleDriveService';
 import { useAuth } from '../../context/AuthContext.jsx';
 import FileUploader from '../../components/common/FileUploader';
 import Avatar from '../../components/common/Avatar';
@@ -254,56 +254,49 @@ const TaskDetails = () => {
     try {
       setLoadingFiles(true);
       
-      // In a real implementation, we would call the API
-      // const uploadedFiles = await fileService.uploadFiles(files);
+      // Handle both single file and multiple files
+      const filesToProcess = Array.isArray(files) ? files : [files];
       
-      // Simulate API response
-      const uploadedFiles = files.map(file => ({
-        id: `file-${Date.now()}`,
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        url: URL.createObjectURL(file) // For preview purpose
-      }));
-      
-      // Update local state
-      setTaskFiles([...taskFiles, ...uploadedFiles]);
-      toast.success('Files uploaded successfully');
+      // Update local state with uploaded files
+      setTaskFiles(prev => [...prev, ...filesToProcess]);
+      toast.success(`${filesToProcess.length} file(s) uploaded to Google Drive successfully`);
     } catch (error) {
       toast.error(error.message || 'Failed to upload files');
     } finally {
       setLoadingFiles(false);
-      setShowFileUploader(false);
     }
   };
 
-  const handleFileDownload = async (fileKey) => {
-    if (!fileKey || fileKey === 'undefined') {
-      console.error('[handleFileDownload] Invalid fileKey:', fileKey);
-      toast.error('Invalid file key for download');
-      return;
-    }
+  const handleFileDownload = async (file) => {
     try {
-      const downloadUrl = await fileService.getDownloadUrl(fileKey);
-      window.open(downloadUrl, '_blank');
+      if (file.url) {
+        // If file has a direct URL (from Google Drive), open it
+        window.open(file.url, '_blank');
+      } else if (file._id && task.projectId) {
+        // If file has an ID, get download URL from Google Drive
+        const downloadInfo = await googleDriveService.getDownloadUrl(task.projectId, file._id);
+        window.open(downloadInfo.downloadUrl, '_blank');
+      } else {
+        toast.error('Unable to download file - missing file information');
+      }
     } catch (error) {
       console.error('Error downloading file:', error);
       toast.error('Failed to download file');
     }
   };
 
-  const handleFileDelete = async (fileKey) => {
-    if (!fileKey || fileKey === 'undefined') {
-      console.error('[handleFileDelete] Invalid fileKey:', fileKey);
-      toast.error('Invalid file key for delete');
-      return;
-    }
-    if (window.confirm('Are you sure you want to delete this file?')) {
+  const handleFileDelete = async (file) => {
+    if (window.confirm(`Are you sure you want to delete "${file.filename || file.name}"?`)) {
       try {
-        await fileService.deleteFile(fileKey);
-        // Always pass the correct task ID
-        fetchTaskFiles(idFromParams);
-        toast.success('File deleted successfully');
+        if (file._id && task.projectId) {
+          await googleDriveService.deleteFile(task.projectId, file._id);
+          setTaskFiles(prev => prev.filter(f => f._id !== file._id));
+          toast.success('File deleted successfully from Google Drive');
+        } else {
+          // For local files (not yet saved), just remove from state
+          setTaskFiles(prev => prev.filter(f => f !== file));
+          toast.success('File removed');
+        }
       } catch (error) {
         console.error('Error deleting file:', error);
         toast.error('Failed to delete file');

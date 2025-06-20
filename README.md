@@ -143,38 +143,34 @@ This project is licensed under the ISC License.
 
 For questions or feedback, please reach out to the project maintainers.
 
-## AWS S3 Setup
+## Google Drive Integration Setup
 
-For the file upload functionality to work, you'll need to set up an AWS S3 bucket.
+TaskNest uses Google Drive for file storage and management. To set up Google Drive integration:
 
-1. Create an AWS account if you don't have one already
-2. Create a new S3 bucket with the following settings:
-   - Block all public access: Enabled
-   - Bucket versioning: Optional (recommended for production)
-   - Server-side encryption: Enabled
-   
-3. Create an IAM user with programmatic access and attach the following policy:
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Effect": "Allow",
-         "Action": [
-           "s3:PutObject",
-           "s3:GetObject",
-           "s3:DeleteObject",
-           "s3:ListBucket"
-         ],
-         "Resource": [
-           "arn:aws:s3:::your-bucket-name",
-           "arn:aws:s3:::your-bucket-name/*"
-         ]
-       }
-     ]
-   }
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Google Drive API:
+   - Go to "APIs & Services" > "Library"
+   - Search for "Google Drive API"
+   - Click "Enable"
+
+4. Create credentials:
+   - Go to "APIs & Services" > "Credentials"
+   - Click "Create Credentials" > "Service Account"
+   - Fill in the service account details
+   - Download the JSON key file
+
+5. Set up environment variables in your `.env` file:
+   ```
+   GOOGLE_DRIVE_CLIENT_ID=your_client_id
+   GOOGLE_DRIVE_CLIENT_SECRET=your_client_secret
+   GOOGLE_DRIVE_REDIRECT_URI=http://localhost:3000/auth/google/callback
+   GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH=path/to/service-account-key.json
    ```
 
-4. Add the IAM user's access key and secret key to your `.env` file.
+6. Configure OAuth consent screen:
+   - Go to "APIs & Services" > "OAuth consent screen"
+   - Configure the consent screen for your application
+   - Add your domain to authorized domains
 
-For more details on the S3 integration, see [S3 Integration Documentation](docs/S3_INTEGRATION.md).
+For more details on the Google Drive integration, see the updated documentation.

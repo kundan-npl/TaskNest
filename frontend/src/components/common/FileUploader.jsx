@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { toast } from 'react-toastify';
-import fileService from '../../services/fileService';
+import googleDriveService from '../../services/googleDriveService';
 
-const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize = 5, projectId, taskId }) => {
+const FileUploader = ({ onUpload, onClose, multiple = false, allowedTypes = '*', maxSize = 50, projectId, taskId }) => {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState({});
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const fileInputRef = useRef(null);
   
@@ -61,9 +61,14 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
       toast.warning('Please select files to upload');
       return;
     }
+
+    if (!projectId) {
+      toast.error('Project ID is required for Google Drive upload');
+      return;
+    }
     
     setUploading(true);
-    setProgress(0);
+    setUploadProgress({});
     setCurrentFileIndex(0);
     
     const uploadedFiles = [];
@@ -72,47 +77,47 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
       // Process each file sequentially
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const fileId = `upload-${Date.now()}-${i}`;
         setCurrentFileIndex(i);
-        setProgress(0);
+
+        // Initialize progress tracking
+        setUploadProgress(prev => ({ ...prev, [fileId]: 0 }));
         
         try {
-          // Step 1: Get a presigned upload URL
-          const uploadData = await fileService.getUploadUrl({
-            filename: file.name,
-            contentType: file.type,
+          // Upload to Google Drive
+          const uploadedFile = await googleDriveService.uploadFile(
             projectId,
-            taskId
-          });
-          
-          // Step 2: Upload the file to S3 using the presigned URL
-          await fileService.uploadFileWithSignedUrl(
-            uploadData.uploadUrl,
             file,
-            (percentComplete) => setProgress(percentComplete)
+            (progress) => {
+              setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
+            }
           );
           
-          // Step 3: Save the file metadata to the database
-          const fileMetadata = await fileService.saveFileMetadata({
-            key: uploadData.key,
-            filename: file.name,
-            contentType: file.type,
-            size: file.size,
-            projectId,
-            taskId
+          uploadedFiles.push({
+            _id: uploadedFile.id,
+            filename: uploadedFile.name,
+            originalName: uploadedFile.name,
+            size: uploadedFile.size || file.size,
+            mimetype: uploadedFile.mimeType || file.type,
+            uploadedBy: 'current-user',
+            uploadedAt: new Date().toISOString(),
+            url: uploadedFile.webViewLink,
+            key: uploadedFile.id
           });
           
-          uploadedFiles.push(fileMetadata);
-          
-          // Small delay to show 100% progress before moving to next file
-          if (i < files.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
         } catch (error) {
           console.error(`Error uploading file ${file.name}:`, error);
           toast.error(`Failed to upload ${file.name}: ${error.message || 'Unknown error'}`);
           
           // Continue with next file instead of stopping the entire batch
           continue;
+        } finally {
+          // Clean up progress tracking
+          setUploadProgress(prev => {
+            const newProgress = { ...prev };
+            delete newProgress[fileId];
+            return newProgress;
+          });
         }
       }
       
@@ -121,12 +126,13 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
         onUpload(multiple ? uploadedFiles : uploadedFiles[0]);
         
         if (uploadedFiles.length === files.length) {
-          toast.success(`Successfully uploaded ${files.length} file(s)`);
+          toast.success(`Successfully uploaded ${files.length} file(s) to Google Drive`);
         } else {
-          toast.info(`Uploaded ${uploadedFiles.length} of ${files.length} file(s)`);
+          toast.info(`Uploaded ${uploadedFiles.length} of ${files.length} file(s) to Google Drive`);
         }
         
         setFiles([]);
+        if (onClose) onClose();
       } else {
         toast.error('No files were uploaded successfully');
       }
@@ -136,6 +142,7 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
       toast.error(error.message || 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress({});
     }
   };
 
@@ -145,9 +152,24 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
 
   return (
     <div className="w-full">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium text-gray-900">Upload to Google Drive</h3>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+            type="button"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       <div 
         className={`border-2 border-dashed rounded-lg p-6 ${
-          uploading ? 'border-gray-300 bg-gray-50' : 'border-gray-300 hover:border-primary-500 bg-gray-50 hover:bg-gray-100'
+          uploading ? 'border-gray-300 bg-gray-50' : 'border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100'
         } transition-colors cursor-pointer text-center`}
         onClick={uploading ? null : triggerFileInput}
       >
@@ -162,11 +184,16 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
         
         {!uploading ? (
           <>
-            <svg className="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
+            <div className="flex justify-center mb-4">
+              <svg className="h-12 w-12 text-blue-500" viewBox="0 0 48 48">
+                <path fill="#2196F3" d="M25.5 6.938l-3.5 6.062 10.5 18.188 3.5-6.062z"/>
+                <path fill="#4CAF50" d="M12.5 41.062h23l-3.5-6.062h-16z"/>
+                <path fill="#FFC107" d="M12.5 41.062l10.5-18.188-3.5-6.062-10.5 18.188z"/>
+                <path fill="#F44336" d="M35.5 41.062l-10.5-18.188 3.5-6.062 10.5 18.188z"/>
+              </svg>
+            </div>
             <p className="mt-2 text-sm font-medium text-gray-900">
-              Drop files here or click to upload
+              Drop files here or click to upload to Google Drive
             </p>
             <p className="mt-1 text-xs text-gray-500">
               {multiple ? 'Upload multiple files' : 'Upload a single file'} up to {maxSize}MB
@@ -175,7 +202,7 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
           </>
         ) : (
           <div className="space-y-4">
-            <svg className="mx-auto animate-spin h-8 w-8 text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="mx-auto animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -183,15 +210,23 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
               <div className="text-sm font-medium text-gray-900">
                 Uploading {currentFileIndex + 1} of {files.length}: {files[currentFileIndex]?.name}
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5 my-2">
-                <div 
-                  className="bg-primary-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>{progress}% complete</span>
-                <span>File {currentFileIndex + 1}/{files.length}</span>
+              
+              {/* Upload Progress for each file */}
+              <div className="space-y-2 mt-3">
+                {Object.entries(uploadProgress).map(([fileId, progress]) => (
+                  <div key={fileId} className="bg-blue-50 rounded-lg p-3">
+                    <div className="flex justify-between text-sm text-blue-700 mb-1">
+                      <span>Uploading to Google Drive...</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -201,13 +236,21 @@ const FileUploader = ({ onUpload, multiple = false, allowedTypes = '*', maxSize 
       {files.length > 0 && !uploading && (
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-700">{files.length} file(s) selected</h3>
+            <h3 className="text-sm font-medium text-gray-700">
+              {files.length} file(s) selected for Google Drive upload
+            </h3>
             <button
               type="button"
               onClick={handleUpload}
-              className="btn-primary"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              Upload Files
+              <svg className="w-4 h-4 mr-2" viewBox="0 0 48 48">
+                <path fill="#2196F3" d="M25.5 6.938l-3.5 6.062 10.5 18.188 3.5-6.062z"/>
+                <path fill="#4CAF50" d="M12.5 41.062h23l-3.5-6.062h-16z"/>
+                <path fill="#FFC107" d="M12.5 41.062l10.5-18.188-3.5-6.062-10.5 18.188z"/>
+                <path fill="#F44336" d="M35.5 41.062l-10.5-18.188 3.5-6.062 10.5 18.188z"/>
+              </svg>
+              Upload to Google Drive
             </button>
           </div>
           
